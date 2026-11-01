@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useId } from 'react';
 import { useApp } from '@/context/AppContext';
 import {
   MapPin,
@@ -8,8 +8,9 @@ import {
   ChevronDown,
   Check,
   Compass,
+  Loader2,
 } from 'lucide-react';
-import { navigateTo } from '@/lib/router/useRouter';
+import { navigateTo, useNavigationFeedback } from '@/lib/router/useRouter';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
 
 interface LocationSelectorInputProps {
@@ -45,6 +46,10 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
     userLocation,
     addToast,
   } = useApp();
+
+  const selectorId = useId();
+  const { pendingLinkId, isSameUrlInProgress } = useNavigationFeedback();
+  const isCityNavPending = pendingLinkId === `loc-${selectorId}`;
 
   const displayCity = currentCity || selectedMarketplaceCity || 'All India';
 
@@ -101,17 +106,20 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
   }, [searchQuery, cities, states]);
 
   const handleSelectCity = (cityName: string) => {
-    setSelectedMarketplaceCity(cityName);
-    setIsOpen(false);
-    setSearchQuery('');
-
     const targetUrl = buildChillyUrl({
       city: cityName,
       categoryId: selectedMarketplaceCategory,
       subcategoryId: selectedMarketplaceSubcategory,
       categories,
     });
-    navigateTo(targetUrl);
+    if (isSameUrlInProgress(targetUrl)) {
+      return;
+    }
+
+    setSelectedMarketplaceCity(cityName);
+    setIsOpen(false);
+    setSearchQuery('');
+    navigateTo(targetUrl, `loc-${selectorId}`);
   };
 
   const handleDetectLocation = () => {
@@ -142,7 +150,11 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
             : 'border-slate-300 hover:border-slate-400'
         }`}
       >
-        <MapPin className={`w-4 h-4 shrink-0 ${isAllCities ? 'text-slate-400' : 'text-blue-600'}`} />
+        {isCityNavPending ? (
+          <Loader2 className="w-4 h-4 shrink-0 text-blue-600 animate-spin" />
+        ) : (
+          <MapPin className={`w-4 h-4 shrink-0 ${isAllCities ? 'text-slate-400' : 'text-blue-600'}`} />
+        )}
 
         <div className="flex flex-col min-w-0">
           <span className="text-[9px] font-bold text-slate-400 uppercase leading-none tracking-tight">Location</span>

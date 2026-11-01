@@ -1,6 +1,5 @@
 'use client';
 import React, { useState, useMemo } from 'react';
-import Link from 'next/link';
 import {
   Wrench,
   Car,
@@ -28,11 +27,13 @@ import {
   FolderOpen,
   Filter,
   CheckCircle2,
+  Loader2,
 } from 'lucide-react';
 import { Category } from '@/lib/types';
 import { useApp } from '@/context/AppContext';
-import { navigateTo } from '@/lib/router/useRouter';
+import { useNavigationFeedback } from '@/lib/router/useRouter';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
+import { NavLink } from '@/components/common/NavLink';
 
 interface CategoryDirectoryGridProps {
   categories: Category[];
@@ -157,6 +158,7 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
   className = '',
 }) => {
   const { listings } = useApp();
+  const { isUrlPending } = useNavigationFeedback();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
   const [activeTabFilter, setActiveTabFilter] = useState<string>('all');
@@ -240,18 +242,6 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
   const getCategoryIcon = (iconName: string) => {
     const IconComp = ICONS_MAP[iconName] || Layers;
     return IconComp;
-  };
-
-  const handleCategoryClick = (catId: string) => {
-    if (onSelectCategory) {
-      onSelectCategory(catId);
-    }
-  };
-
-  const handleSubcategoryClick = (catId: string, subId: string) => {
-    if (onSelectSubcategory) {
-      onSelectSubcategory(catId, subId);
-    }
   };
 
   const totalAllSubs = Object.values(subcategoriesByParent).reduce((acc, subs) => acc + subs.length, 0);
@@ -369,6 +359,7 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
               subcategoryId: 'all',
               categories,
             });
+            const isCatPending = isUrlPending(catUrl);
 
             return (
               <div
@@ -381,8 +372,9 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
               >
                 <div>
                   {/* Category Header Card (Fiverr + Cloud Service Tile) */}
-                  <Link
+                  <NavLink
                     href={catUrl}
+                    showSpinner={false}
                     className="p-4 border-b border-[#f1f3f4] bg-white hover:bg-[#f8f9fa] cursor-pointer transition-colors flex items-center justify-between gap-3"
                   >
                     <div className="flex items-center gap-3 min-w-0">
@@ -403,9 +395,13 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
                       className="w-7 h-7 rounded-md bg-[#f8f9fa] text-[#5f6368] group-hover:text-[#1dbf73] group-hover:bg-[#e6f4ea] flex items-center justify-center transition-colors shrink-0"
                       title={`Browse all in ${cat.name}`}
                     >
-                      <ArrowUpRight className="w-3.5 h-3.5" />
+                      {isCatPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#1dbf73]" />
+                      ) : (
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      )}
                     </span>
-                  </Link>
+                  </NavLink>
 
                   {/* Subcategories List */}
                   <div className="p-3 space-y-0.5">
@@ -423,11 +419,13 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
                           subcategoryId: sub.id,
                           categories,
                         });
+                        const isSubPending = isUrlPending(subUrl);
 
                         return (
-                          <Link
+                          <NavLink
                             key={sub.id}
                             href={subUrl}
+                            showSpinner={false}
                             className={`px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center justify-between gap-2 transition-all cursor-pointer group/item ${
                               isSubSelected
                                 ? 'bg-[#e6f4ea] text-[#137333] font-semibold'
@@ -448,13 +446,17 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
                                   {subAds.toLocaleString()}
                                 </span>
                               )}
-                              <ChevronRight
-                                className={`w-3 h-3 opacity-0 group-hover/item:opacity-100 transition-opacity ${
-                                  isSubSelected ? 'text-[#137333] opacity-100' : 'text-[#5f6368]'
-                                }`}
-                              />
+                              {isSubPending ? (
+                                <Loader2 className="w-3 h-3 animate-spin text-[#1dbf73]" />
+                              ) : (
+                                <ChevronRight
+                                  className={`w-3 h-3 opacity-0 group-hover/item:opacity-100 transition-opacity ${
+                                    isSubSelected ? 'text-[#137333] opacity-100' : 'text-[#5f6368]'
+                                  }`}
+                                />
+                              )}
                             </div>
-                          </Link>
+                          </NavLink>
                         );
                       })
                     )}
@@ -476,13 +478,13 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
                     </span>
                   )}
 
-                  <Link
+                  <NavLink
                     href={catUrl}
                     className="text-[11px] font-semibold text-[#3c4043] hover:text-[#1dbf73] flex items-center gap-0.5 cursor-pointer ml-auto"
                   >
                     <span>Explore</span>
                     <ChevronRight className="w-3 h-3" />
-                  </Link>
+                  </NavLink>
                 </div>
               </div>
             );

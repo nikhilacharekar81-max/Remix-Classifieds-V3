@@ -70,6 +70,8 @@ interface AppContextType {
   impersonateUser: (user: UserAccount) => void;
   exitImpersonation: () => void;
   currentUser: UserAccount;
+  authUser: UserAccount | null;
+  setAuthUser: (user: UserAccount | null) => void;
   setCurrentUserId: (id: string) => void;
 
   // Data Collections
@@ -2029,6 +2031,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialServerDat
         impersonateUser,
         exitImpersonation,
         currentUser,
+        authUser,
+        setAuthUser,
         setCurrentUserId: setActiveUserId,
         listings,
         categories,

@@ -170,6 +170,14 @@ export const listings = pgTable(
       table.createdAt
     ),
     index('idx_listings_location_cat').on(table.city, table.categoryId, table.status),
+    index('idx_listings_status_city_cat_created').on(
+      table.status,
+      table.city,
+      table.categoryId,
+      table.subcategoryId,
+      table.createdAt
+    ),
+    index('idx_listings_status_expires').on(table.status, table.expiresAt),
   ]
 );
 

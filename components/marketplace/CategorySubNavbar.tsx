@@ -1,9 +1,10 @@
 'use client';
 import React, { useState, useRef, useEffect } from 'react';
-import Link from 'next/link';
-import { ChevronDown, X, Layers, Grid } from 'lucide-react';
+import { ChevronDown, X, Grid, Loader2 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
+import { NavLink } from '@/components/common/NavLink';
+import { useNavigationFeedback } from '@/lib/router/useRouter';
 
 interface CategorySubNavbarProps {
   currentCity?: string;
@@ -25,9 +26,8 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
   const {
     categories,
     selectedMarketplaceCity,
-    setSelectedMarketplaceCategory,
-    setSelectedMarketplaceSubcategory,
   } = useApp();
+  const { isNavigating, pendingLinkId } = useNavigationFeedback();
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -106,7 +106,11 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
                   : 'text-[#3c4043] bg-[#f8f9fa] border-[#dadce0] hover:bg-[#f1f3f4] hover:text-[#202124]'
               }`}
             >
-              <Grid className="w-3.5 h-3.5 text-[#1dbf73]" />
+              {isNavigating && !pendingLinkId ? (
+                <Loader2 className="w-3.5 h-3.5 text-[#1dbf73] animate-spin" />
+              ) : (
+                <Grid className="w-3.5 h-3.5 text-[#1dbf73]" />
+              )}
               <span>All Categories</span>
               <ChevronDown
                 className={`w-3.5 h-3.5 transition-transform duration-200 ${
@@ -127,7 +131,7 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
                       · {city}
                     </span>
                   </div>
-                  <Link
+                  <NavLink
                     href={buildChillyUrl({
                       city,
                       categoryId: 'all',
@@ -135,10 +139,10 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
                       categories,
                     })}
                     onClick={closeMenus}
-                    className="text-xs font-semibold text-[#1dbf73] hover:text-[#19a463] hover:underline cursor-pointer"
+                    className="text-xs font-semibold text-[#1dbf73] hover:text-[#19a463] hover:underline cursor-pointer inline-flex items-center"
                   >
-                    Full Directory Overview →
-                  </Link>
+                    <span>Full Directory Overview →</span>
+                  </NavLink>
                 </div>
 
                 {/* 4-column category grid */}
@@ -154,13 +158,13 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
                     return (
                       <div key={rootCat.id} className="space-y-2">
                         {/* Parent Category Header */}
-                        <Link
+                        <NavLink
                           href={rootHref}
                           onClick={closeMenus}
-                          className="font-bold text-xs text-[#202124] hover:text-[#1dbf73] transition-colors block text-left truncate w-full cursor-pointer group"
+                          className="font-bold text-xs text-[#202124] hover:text-[#1dbf73] transition-colors flex items-center text-left truncate w-full cursor-pointer group"
                         >
-                          <span className="group-hover:underline">{rootCat.name}</span>
-                        </Link>
+                          <span className="group-hover:underline truncate">{rootCat.name}</span>
+                        </NavLink>
 
                         {/* Child Subcategories */}
                         {children.length > 0 && (
@@ -176,19 +180,19 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
                                 categories,
                               });
                               return (
-                                <Link
+                                <NavLink
                                   key={sub.id}
                                   href={subHref}
                                   onClick={closeMenus}
-                                  className={`text-xs block text-left truncate w-full transition-colors cursor-pointer py-0.5 pl-2 ${
+                                  className={`text-xs flex items-center text-left truncate w-full transition-colors cursor-pointer py-0.5 pl-2 ${
                                     isSubActive
                                       ? 'text-[#1dbf73] font-bold'
                                       : 'text-[#5f6368] hover:text-[#202124]'
                                   }`}
                                   title={sub.name}
                                 >
-                                  {sub.name}
-                                </Link>
+                                  <span className="truncate">{sub.name}</span>
+                                </NavLink>
                               );
                             })}
                           </div>
@@ -215,18 +219,18 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
               });
 
               return (
-                <Link
+                <NavLink
                   key={item.label}
                   href={href}
                   onClick={closeMenus}
-                  className={`text-[13px] py-3 border-b-[3px] transition-all cursor-pointer shrink-0 select-none ${
+                  className={`text-[13px] py-3 border-b-[3px] transition-all cursor-pointer shrink-0 select-none inline-flex items-center ${
                     isActive
                       ? 'border-[#1dbf73] text-[#202124] font-semibold'
                       : 'border-transparent text-[#62646a] hover:text-[#202124] hover:border-[#1dbf73]/60 font-medium'
                   }`}
                 >
-                  {item.label}
-                </Link>
+                  <span>{item.label}</span>
+                </NavLink>
               );
             })}
           </div>
@@ -257,7 +261,7 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
             {/* Quick All Classifieds Button */}
             <div className="p-3 bg-blue-50/60 border-b border-blue-100 flex items-center justify-between">
               <span className="text-xs text-blue-950 font-bold">Browse everything in {city}</span>
-              <Link
+              <NavLink
                 href={buildChillyUrl({
                   city,
                   categoryId: 'all',
@@ -265,10 +269,10 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
                   categories,
                 })}
                 onClick={closeMenus}
-                className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+                className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer inline-flex items-center"
               >
-                View All
-              </Link>
+                <span>View All</span>
+              </NavLink>
             </div>
 
             {/* Category List */}
@@ -283,19 +287,19 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
                 });
                 return (
                   <div key={rootCat.id} className="pt-3 first:pt-0 space-y-2">
-                    <Link
+                    <NavLink
                       href={rootHref}
                       onClick={closeMenus}
                       className="font-black text-xs text-slate-900 uppercase tracking-wider flex items-center justify-between w-full text-left cursor-pointer"
                     >
                       <span className="text-blue-900">{rootCat.name}</span>
                       <span className="text-[10px] text-blue-600 font-bold">All {rootCat.name} →</span>
-                    </Link>
+                    </NavLink>
 
                     {children.length > 0 && (
                       <div className="grid grid-cols-2 gap-1.5 pt-1">
                         {children.map((sub) => (
-                          <Link
+                          <NavLink
                             key={sub.id}
                             href={buildChillyUrl({
                               city,
@@ -304,10 +308,10 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
                               categories,
                             })}
                             onClick={closeMenus}
-                            className="text-left text-xs text-slate-600 hover:text-blue-600 p-2 rounded-lg bg-slate-50 border border-slate-100 truncate font-medium active:bg-blue-100 cursor-pointer block"
+                            className="text-left text-xs text-slate-600 hover:text-blue-600 p-2 rounded-lg bg-slate-50 border border-slate-100 truncate font-medium active:bg-blue-100 cursor-pointer flex items-center justify-between"
                           >
-                            {sub.name}
-                          </Link>
+                            <span className="truncate">{sub.name}</span>
+                          </NavLink>
                         ))}
                       </div>
                     )}

@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo } from 'react';
-import Link from 'next/link';
+import { NavLink } from '@/components/common/NavLink';
 import { useApp } from '@/context/AppContext';
 import { Listing } from '@/lib/types';
 import { calculateDistanceKm } from '@/lib/utils/distanceUtils';
@@ -47,16 +47,18 @@ import {
   BookOpen,
   Navigation,
   Menu,
+  Loader2,
 } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { ImageWithFallback } from '@/components/common/ImageWithFallback';
-import { navigateTo } from '@/lib/router/useRouter';
+import { navigateTo, useNavigationFeedback } from '@/lib/router/useRouter';
 import { buildChillyUrl, ParsedRoute } from '@/lib/utils/seoAndUrlHelper';
 import { CategoryDirectoryGrid } from './CategoryDirectoryGrid';
 import { LocationSelectorInput } from './LocationSelectorInput';
 import { CategorySubNavbar } from './CategorySubNavbar';
 import { SeoContentBlock } from './SeoContentBlock';
 import { Footer } from '@/components/common/Footer';
+import { MyAccountDropdown } from '@/components/common/MyAccountDropdown';
 
 const ICONS_MAP: Record<string, React.FC<{ className?: string }>> = {
   Wrench,
@@ -137,6 +139,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [latestAdsLayout, setLatestAdsLayout] = useState<'grid' | 'listicle'>('grid');
   const [listingsLayout, setListingsLayout] = useState<'grid' | 'listicle'>('grid');
+  const { isUrlPending } = useNavigationFeedback();
 
   // Sort & Properties filters states (initialized from URL query parameters)
   const [sortBy, setSortBy] = useState<string>(() => initialQuery?.sort || 'newest');
@@ -529,13 +532,13 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                 <Menu className="w-5 h-5" />
               </button>
 
-              <Link
+              <NavLink
                 href="/"
                 className="flex items-baseline font-black text-2xl tracking-tight text-[#202124] cursor-pointer select-none"
               >
                 <span>chillyads</span>
                 <span className="text-[#1dbf73] text-3xl leading-none">.</span>
-              </Link>
+              </NavLink>
 
               {/* Typeable Location Selector (Desktop) */}
               <div className="hidden sm:block">
@@ -562,45 +565,25 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                 className="px-4 bg-[#1dbf73] hover:bg-[#19a463] text-white rounded-r-md flex items-center justify-center transition-colors cursor-pointer shrink-0"
                 title="Search Marketplace"
               >
-                <Search className="w-4 h-4" />
+                {isUrlPending(`/search?q=${encodeURIComponent(effectiveSearch)}`) ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Search className="w-4 h-4" />
+                )}
               </button>
             </div>
 
-            {/* Actions: Cloud Console, My Account & Post Ad CTA */}
+            {/* Actions: My Account Dropdown & Post Ad CTA */}
             <div className="flex items-center gap-2 sm:gap-3">
-              <button
-                onClick={() => navigateTo('/admin/dashboard')}
-                className="hidden lg:flex items-center gap-1.5 px-3 py-2 text-[#5f6368] hover:text-[#1a73e8] hover:bg-[#f8f9fa] rounded-md font-semibold text-xs transition-colors cursor-pointer border border-transparent hover:border-[#dadce0]"
-                title="Open Google Cloud Admin Console"
-              >
-                <Shield className="w-3.5 h-3.5 text-[#1a73e8]" />
-                <span>Cloud Console</span>
-              </button>
+              <MyAccountDropdown />
 
-              <Link
-                href="/my-account"
-                className="px-3 py-2 text-[#3c4043] hover:text-[#202124] font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer rounded-md hover:bg-[#f1f3f4]"
-                title="User Account & Ads Panel"
-              >
-                <User className="w-4 h-4 text-[#5f6368]" />
-                <span className="hidden sm:inline">My Account</span>
-              </Link>
-
-              <button
-                onClick={() => signOut()}
-                className="hidden md:flex px-2.5 py-2 text-[#5f6368] hover:text-[#d93025] font-semibold text-xs items-center transition-colors cursor-pointer rounded-md hover:bg-[#fce8e6]/50"
-                title="Sign Out"
-              >
-                <span>Sign Out</span>
-              </button>
-
-              <Link
+              <NavLink
                 href="/post"
                 className="px-4 py-2 bg-[#1dbf73] hover:bg-[#19a463] text-white font-bold rounded-md text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4 stroke-[2.5]" />
                 <span>Post a Gig / Ad</span>
-              </Link>
+              </NavLink>
             </div>
           </div>
 
@@ -617,7 +600,11 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
               onClick={() => navigateTo(`/search?q=${encodeURIComponent(effectiveSearch)}`)}
               className="px-4 bg-[#1dbf73] text-white rounded-r-md flex items-center justify-center hover:bg-[#19a463] transition-colors cursor-pointer"
             >
-              <Search className="w-4 h-4" />
+              {isUrlPending(`/search?q=${encodeURIComponent(effectiveSearch)}`) ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Search className="w-4 h-4" />
+              )}
             </button>
           </div>
         </div>
@@ -994,18 +981,18 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
             <div className="relative rounded-2xl overflow-hidden bg-[#0a4226] text-white border border-[#1dbf73]/30 shadow-sm">
               <div className="px-6 py-10 sm:px-12 sm:py-14 max-w-4xl space-y-6 relative z-10">
                 <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs text-emerald-200/80">
-                  <Link href="/" className="hover:text-white font-medium cursor-pointer">
+                  <NavLink href="/" className="hover:text-white font-medium cursor-pointer">
                     chillyads
-                  </Link>
+                  </NavLink>
                   <span>/</span>
                   {effectiveCity && effectiveCity !== 'All India' && effectiveCity !== 'All Cities' ? (
                     <>
-                      <Link
+                      <NavLink
                         href={buildChillyUrl({ city: effectiveCity, categories })}
                         className="font-semibold text-white hover:underline"
                       >
                         {effectiveCity}
-                      </Link>
+                      </NavLink>
                       <span>/</span>
                       <span className="text-emerald-100">Marketplace</span>
                     </>
@@ -1045,9 +1032,12 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                   </div>
                   <button
                     onClick={() => navigateTo(`/search?q=${encodeURIComponent(effectiveSearch)}`)}
-                    className="px-6 py-2.5 bg-[#1dbf73] hover:bg-[#19a463] text-white font-bold text-sm rounded-md transition-colors cursor-pointer shrink-0"
+                    className="px-6 py-2.5 bg-[#1dbf73] hover:bg-[#19a463] text-white font-bold text-sm rounded-md transition-colors cursor-pointer shrink-0 flex items-center gap-1.5"
                   >
-                    Search
+                    {isUrlPending(`/search?q=${encodeURIComponent(effectiveSearch)}`) && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    )}
+                    <span>Search</span>
                   </button>
                 </div>
 
@@ -1060,7 +1050,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     { label: 'iPhones & Mobiles', cat: 'cat_mobiles', sub: 'sub_mob_phones' },
                     { label: 'Home & Tech Services', cat: 'cat_services', sub: 'all' },
                   ].map((tag) => (
-                    <Link
+                    <NavLink
                       key={tag.label}
                       href={buildChillyUrl({
                         city: effectiveCity,
@@ -1071,7 +1061,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                       className="px-3 py-1 rounded-full border border-white/30 hover:border-white hover:bg-white/10 text-white font-medium transition-colors cursor-pointer"
                     >
                       {tag.label}
-                    </Link>
+                    </NavLink>
                   ))}
                 </div>
               </div>
@@ -1085,13 +1075,13 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                   <span>·</span>
                   <span>Direct KYC-verified sellers across {effectiveCity && effectiveCity !== 'All India' ? effectiveCity : '500+ Indian cities'}</span>
                 </div>
-                <Link
+                <NavLink
                   href="/post"
                   className="text-white hover:text-[#1dbf73] font-semibold flex items-center gap-1 transition-colors"
                 >
                   <span>Become a Seller</span>
                   <ChevronRight className="w-3.5 h-3.5" />
-                </Link>
+                </NavLink>
               </div>
             </div>
 
@@ -1155,6 +1145,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     const subName = getCategoryName(listing.categoryId, listing.subcategoryId);
                     const listingUrl = buildChillyUrl({ listing, categories });
                     const sellerInitial = (listing.sellerName || 'S').charAt(0).toUpperCase();
+                    const isItemPending = isUrlPending(listingUrl);
                     return (
                       <article
                         key={listing.id}
@@ -1187,20 +1178,25 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                                   {listing.sellerName || 'Verified Seller'}
                                 </span>
                               </div>
-                              <span className="text-[10px] font-semibold text-[#1dbf73] shrink-0">
-                                Verified
-                              </span>
+                              {isItemPending ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#1dbf73] shrink-0" />
+                              ) : (
+                                <span className="text-[10px] font-semibold text-[#1dbf73] shrink-0">
+                                  Verified
+                                </span>
+                              )}
                             </div>
 
                             {/* Gig Title */}
                             <h3 className="font-medium text-xs text-[#202124] group-hover:text-[#1dbf73] transition-colors line-clamp-2 leading-snug" title={listing.title}>
-                              <Link
+                              <NavLink
                                 href={listingUrl}
+                                showSpinner={false}
                                 onClick={(e) => e.stopPropagation()}
                                 className="hover:underline"
                               >
                                 {listing.title}
-                              </Link>
+                              </NavLink>
                             </h3>
 
                             {/* Unboxed Metadata (Zero-Pill Discipline) */}
@@ -1229,6 +1225,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     const subName = getCategoryName(listing.categoryId, listing.subcategoryId);
                     const listingUrl = buildChillyUrl({ listing, categories });
                     const sellerInitial = (listing.sellerName || 'S').charAt(0).toUpperCase();
+                    const isItemPending = isUrlPending(listingUrl);
                     return (
                       <article
                         key={listing.id}
@@ -1273,13 +1270,14 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                           </div>
 
                           <h3 className="text-sm sm:text-base font-bold text-[#202124] group-hover:text-[#1dbf73] transition-colors line-clamp-1">
-                            <Link
+                            <NavLink
                               href={listingUrl}
+                              showSpinner={false}
                               onClick={(e) => e.stopPropagation()}
                               className="hover:underline"
                             >
                               {listing.title}
-                            </Link>
+                            </NavLink>
                           </h3>
 
                           <p className="text-xs text-[#5f6368] line-clamp-2 leading-relaxed">
@@ -1299,7 +1297,11 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                           </div>
                           <span className="px-3 py-1.5 rounded-md bg-[#f8f9fa] group-hover:bg-[#1dbf73] text-[#202124] group-hover:text-white border border-[#dadce0] group-hover:border-[#1dbf73] text-xs font-semibold transition-colors flex items-center gap-1">
                             <span>View Ad</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
+                            {isItemPending ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            )}
                           </span>
                         </div>
                       </article>
@@ -1320,13 +1322,13 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                 </div>
                 <div className="space-y-1">
                   {/* Reset to Directory Option */}
-                  <Link
+                  <NavLink
                     href={buildChillyUrl({ city: effectiveCity, categories })}
                     className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer hover:bg-slate-50 text-slate-500"
                   >
                     <FolderTree className="w-4 h-4 text-slate-400" />
                     <span>All Categories Directory</span>
-                  </Link>
+                  </NavLink>
 
                   {rootCategories.map((cat) => {
                     const IconComponent = ICONS_MAP[cat.icon || 'Tag'] || Tag;
@@ -1341,7 +1343,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 
                     return (
                       <div key={cat.id} className="space-y-1">
-                        <Link
+                        <NavLink
                           href={catTargetUrl}
                           className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
                             isSelected
@@ -1358,12 +1360,12 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                           {childSubs.length > 0 && (
                             <ChevronDown className={`w-3 h-3 transition-transform ${isSelected ? 'rotate-180 text-blue-500' : 'text-slate-400'}`} />
                           )}
-                        </Link>
+                        </NavLink>
 
                         {/* Nested Subcategories List if Parent Category is Selected */}
                         {isSelected && childSubs.length > 0 && (
                           <div className="pl-6 pr-2 py-1 space-y-1 border-l-2 border-slate-100 ml-5 animate-in slide-in-from-top-1 duration-150">
-                            <Link
+                            <NavLink
                               href={catTargetUrl}
                               className={`w-full text-left py-1 text-[11px] font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${
                                 effectiveSubcategory === 'all'
@@ -1373,7 +1375,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                             >
                               <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
                               <span>All in {cat.name}</span>
-                            </Link>
+                            </NavLink>
 
                             {childSubs.map((sub) => {
                               const isSubSelected = effectiveSubcategory === sub.id;
@@ -1384,7 +1386,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                                 categories,
                               });
                               return (
-                                <Link
+                                <NavLink
                                   key={sub.id}
                                   href={subTargetUrl}
                                   className={`w-full text-left py-1 text-[11px] font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${
@@ -1395,7 +1397,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                                 >
                                   <span className={`w-1.5 h-1.5 rounded-full ${isSubSelected ? 'bg-blue-600' : 'bg-slate-300'}`} />
                                   <span>{sub.name}</span>
-                                </Link>
+                                </NavLink>
                               );
                             })}
                           </div>
@@ -1690,29 +1692,29 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
                 <div className="space-y-1.5">
                   <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                    <Link
+                    <NavLink
                       href="/"
                       className="hover:text-blue-600 font-medium cursor-pointer"
                     >
                       Home
-                    </Link>
+                    </NavLink>
 
                     {effectiveCity && effectiveCity !== 'All India' && effectiveCity !== 'All Cities' && (
                       <>
                         <ChevronRight className="w-3 h-3 text-slate-400" />
-                        <Link
+                        <NavLink
                           href={buildChillyUrl({ city: effectiveCity, categories })}
                           className="hover:text-blue-600 font-medium cursor-pointer"
                         >
                           {effectiveCity}
-                        </Link>
+                        </NavLink>
                       </>
                     )}
 
                     {activeMainCat && (
                       <>
                         <ChevronRight className="w-3 h-3 text-slate-400" />
-                        <Link
+                        <NavLink
                           href={buildChillyUrl({
                             city: effectiveCity,
                             categoryId: activeMainCat.id,
@@ -1724,7 +1726,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                           }`}
                         >
                           {activeMainCat.name}
-                        </Link>
+                        </NavLink>
                       </>
                     )}
 
@@ -1813,21 +1815,21 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     </select>
                   </div>
 
-                  <Link
+                  <NavLink
                     href={buildChillyUrl({ city: effectiveCity, categories })}
                     className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <FolderTree className="w-3.5 h-3.5 text-blue-600" />
                     <span>All Categories</span>
-                  </Link>
+                  </NavLink>
 
                   {(effectiveCategory !== 'all' || effectiveCity !== 'All India' || effectiveSearch) && (
-                    <Link
+                    <NavLink
                       href="/"
                       className="text-xs font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 transition-colors cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" /> Clear All Filters
-                    </Link>
+                    </NavLink>
                   )}
                 </div>
               </div>
@@ -1842,12 +1844,12 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                   <p className="text-xs text-slate-500 max-w-md mx-auto">
                     No ads matched your active subcategory or search filters in {effectiveCity}. Try selecting a different subcategory or post the first ad!
                   </p>
-                  <Link
+                  <NavLink
                     href="/post"
                     className="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow cursor-pointer transition-colors"
                   >
                     Post an Ad in this Subcategory
-                  </Link>
+                  </NavLink>
                 </div>
               ) : (
                 <>
@@ -1856,6 +1858,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                       {paginatedMarketplaceListings.map((listing) => {
                         const subName = getCategoryName(listing.categoryId, listing.subcategoryId);
                         const listingUrl = buildChillyUrl({ listing, categories });
+                        const isItemPending = isUrlPending(listingUrl);
                         const distanceKm = userLocation && listing.location.latitude && listing.location.longitude
                           ? calculateDistanceKm(userLocation.latitude, userLocation.longitude, listing.location.latitude, listing.location.longitude)
                           : null;
@@ -1931,20 +1934,25 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                                       {listing.sellerName || 'Verified Seller'}
                                     </span>
                                   </div>
-                                  <span className="text-[10px] text-[#5f6368] truncate shrink-0">
-                                    {subName || 'Classified'}
-                                  </span>
+                                  {isItemPending ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#1dbf73] shrink-0" />
+                                  ) : (
+                                    <span className="text-[10px] text-[#5f6368] truncate shrink-0">
+                                      {subName || 'Classified'}
+                                    </span>
+                                  )}
                                 </div>
 
                                 {/* Fiverr Gig Title */}
                                 <h3 className="text-xs font-medium text-[#202124] group-hover:text-[#1dbf73] line-clamp-2 leading-snug transition-colors">
-                                  <Link
+                                  <NavLink
                                     href={listingUrl}
+                                    showSpinner={false}
                                     onClick={(e) => e.stopPropagation()}
                                     className="hover:underline"
                                   >
                                     {listing.title}
-                                  </Link>
+                                  </NavLink>
                                 </h3>
 
                                 {/* Unboxed Metadata Line (Zero-Pill Discipline) */}
@@ -1981,6 +1989,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                       {paginatedMarketplaceListings.map((listing, idx) => {
                         const subName = getCategoryName(listing.categoryId, listing.subcategoryId);
                         const listingUrl = buildChillyUrl({ listing, categories });
+                        const isItemPending = isUrlPending(listingUrl);
                         const distanceKm = userLocation && listing.location.latitude && listing.location.longitude
                           ? calculateDistanceKm(userLocation.latitude, userLocation.longitude, listing.location.latitude, listing.location.longitude)
                           : null;
@@ -2058,13 +2067,14 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                               </div>
 
                               <h3 className="text-sm sm:text-base font-bold text-[#202124] group-hover:text-[#1dbf73] transition-colors line-clamp-1">
-                                <Link
+                                <NavLink
                                   href={listingUrl}
+                                  showSpinner={false}
                                   onClick={(e) => e.stopPropagation()}
                                   className="hover:underline"
                                 >
                                   {listing.title}
-                                </Link>
+                                </NavLink>
                               </h3>
 
                               <p className="text-xs text-[#5f6368] line-clamp-2 leading-relaxed">
@@ -2108,7 +2118,11 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                                 </button>
                                 <span className="px-3 py-1.5 rounded-md bg-[#f8f9fa] group-hover:bg-[#1dbf73] text-[#202124] group-hover:text-white border border-[#dadce0] group-hover:border-[#1dbf73] text-xs font-semibold transition-colors flex items-center gap-1">
                                   <span>View Ad</span>
-                                  <ChevronRight className="w-3.5 h-3.5" />
+                                  {isItemPending ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  )}
                                 </span>
                               </div>
                             </div>
@@ -2129,12 +2143,12 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     </span>
                     <div className="flex flex-wrap items-center gap-1.5">
                       {currentPage > 1 && (
-                        <Link
+                        <NavLink
                           href={buildPageHref(currentPage - 1)}
-                          className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1"
                         >
                           Previous
-                        </Link>
+                        </NavLink>
                       )}
                       {paginationWindow.map((item) => {
                         if (item === 'ellipsis-start' || item === 'ellipsis-end') {
@@ -2151,27 +2165,27 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                         const pageHref = buildPageHref(pageNum);
                         const isActivePage = pageNum === currentPage;
                         return (
-                          <Link
+                          <NavLink
                             key={pageNum}
                             href={pageHref}
                             aria-current={isActivePage ? 'page' : undefined}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
                               isActivePage
                                 ? 'bg-blue-600 text-white shadow-xs'
                                 : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                             }`}
                           >
                             {pageNum}
-                          </Link>
+                          </NavLink>
                         );
                       })}
                       {currentPage < totalPages && (
-                        <Link
+                        <NavLink
                           href={buildPageHref(currentPage + 1)}
-                          className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1"
                         >
                           Next
-                        </Link>
+                        </NavLink>
                       )}
                     </div>
                   </nav>

@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { NavLink } from '@/components/common/NavLink';
 import { useApp } from '@/context/AppContext';
 import { Listing } from '@/lib/types';
 import {
@@ -24,16 +24,18 @@ import {
   Plus,
   Grid,
   List,
+  Loader2,
 } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { ImageWithFallback } from '@/components/common/ImageWithFallback';
-import { navigateTo } from '@/lib/router/useRouter';
+import { navigateTo, useNavigationFeedback } from '@/lib/router/useRouter';
 import { Footer } from '@/components/common/Footer';
 import { buildChillyUrl, findListingById } from '@/lib/utils/seoAndUrlHelper';
 import { LocationSelectorInput } from './LocationSelectorInput';
 import { BoostAdModal } from './BoostAdModal';
 import { ListingMapWidget } from './ListingMapWidget';
 import { CategorySubNavbar } from './CategorySubNavbar';
+import { MyAccountDropdown } from '@/components/common/MyAccountDropdown';
 import { isListingBoosted, formatBoostTimeRemaining } from '@/lib/utils/boostHelper';
 import { renderUnclickableDescription } from '@/lib/utils/unclickableLinks';
 
@@ -74,6 +76,7 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [isBoostModalOpen, setIsBoostModalOpen] = useState(false);
   const [similarAdsLayout, setSimilarAdsLayout] = useState<'grid' | 'listicle'>('grid');
+  const { isUrlPending } = useNavigationFeedback();
 
   useEffect(() => {
     setActiveImageIndex(0);
@@ -104,12 +107,12 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
         <p className="text-sm text-slate-500 max-w-md mt-1 mb-6">
           The listing #{listingId} may have been sold, removed, or expired.
         </p>
-        <Link
+        <NavLink
           href="/"
           className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow transition-all flex items-center gap-2"
         >
           <ArrowLeft className="w-4 h-4" /> Return to Classifieds Home
-        </Link>
+        </NavLink>
       </div>
     );
   }
@@ -213,13 +216,14 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           {/* Logo */}
           <div className="flex items-center gap-5">
-            <Link
+            <NavLink
               href="/"
+              showSpinner={true}
               className="flex items-baseline font-black text-2xl tracking-tight text-[#202124] cursor-pointer select-none"
             >
               <span>chillyads</span>
               <span className="text-[#1dbf73] text-3xl leading-none">.</span>
-            </Link>
+            </NavLink>
 
             {/* Typeable Location Selector */}
             <div className="hidden sm:block">
@@ -245,35 +249,24 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
               onClick={() => navigateTo(`/search?q=${encodeURIComponent(marketplaceSearch)}`)}
               className="px-4 bg-[#1dbf73] hover:bg-[#19a463] text-white rounded-r-md flex items-center justify-center transition-colors cursor-pointer"
             >
-              <Search className="w-4 h-4" />
+              {isUrlPending(`/search?q=${encodeURIComponent(marketplaceSearch)}`) ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Search className="w-4 h-4" />
+              )}
             </button>
           </div>
 
-          {/* Actions: Cloud Console, My Account & Post Ad Button */}
+          {/* Actions: My Account Dropdown & Post Ad Button */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={() => navigateTo('/admin/dashboard')}
-              className="hidden lg:flex items-center gap-1.5 px-3 py-2 text-[#5f6368] hover:text-[#1a73e8] hover:bg-[#f8f9fa] rounded-md font-semibold text-xs transition-colors cursor-pointer"
-            >
-              <Shield className="w-3.5 h-3.5 text-[#1a73e8]" />
-              <span>Cloud Console</span>
-            </button>
+            <MyAccountDropdown />
 
-            <Link
-              href="/my-account"
-              className="px-3 py-2 text-[#3c4043] hover:text-[#202124] font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer rounded-md hover:bg-[#f1f3f4]"
-              title="User Account & Ads Panel"
-            >
-              <User className="w-4 h-4 text-[#5f6368]" />
-              <span className="hidden sm:inline">My Account</span>
-            </Link>
-
-            <Link
+            <NavLink
               href="/post"
               className="px-4 py-2 bg-[#1dbf73] hover:bg-[#19a463] text-white font-bold rounded-md text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" /> Post a Gig / Ad
-            </Link>
+            </NavLink>
           </div>
         </div>
 
@@ -294,43 +287,43 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
       <nav aria-label="Breadcrumb" className="bg-white border-b border-slate-200 listing-breadcrumb text-slate-500">
         <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between text-xs overflow-x-auto whitespace-nowrap scrollbar-none">
           <div className="flex items-center gap-2">
-            <Link
+            <NavLink
               href="/"
               className="hover:text-blue-600 font-medium flex items-center gap-1 shrink-0"
             >
               Home
-            </Link>
+            </NavLink>
             {listing.location?.city && (
               <>
                 <span className="text-slate-300">/</span>
-                <Link
+                <NavLink
                   href={cityUrl}
                   className="hover:text-blue-600 font-medium transition-colors cursor-pointer shrink-0"
                 >
                   {listing.location.city}
-                </Link>
+                </NavLink>
               </>
             )}
             <span className="text-slate-300">/</span>
             {category && (
               <>
-                <Link
+                <NavLink
                   href={categoryUrl}
                   className="hover:text-blue-600 font-medium transition-colors cursor-pointer shrink-0"
                 >
                   {category.name}
-                </Link>
+                </NavLink>
                 <span className="text-slate-300">/</span>
               </>
             )}
             {subcategory && (
               <>
-                <Link
+                <NavLink
                   href={subcategoryUrl}
                   className="hover:text-blue-600 font-medium transition-colors cursor-pointer shrink-0"
                 >
                   {subcategory.name}
-                </Link>
+                </NavLink>
                 <span className="text-slate-300">/</span>
               </>
             )}
@@ -751,10 +744,12 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
                 {relatedListings.map((item) => {
                   const itemUrl = buildChillyUrl({ listing: item, categories });
                   const sellerInitial = (item.sellerName || 'S').charAt(0).toUpperCase();
+                  const isItemPending = isUrlPending(itemUrl);
                   return (
-                    <Link
+                    <NavLink
                       key={item.id}
                       href={itemUrl}
+                      showSpinner={false}
                       className="bg-white rounded-xl border border-[#dadce0] hover:border-[#1dbf73] overflow-hidden shadow-2xs hover:shadow-md cursor-pointer transition-all group flex flex-col justify-between"
                     >
                       <div className="relative aspect-[4/3] bg-[#f1f3f4] overflow-hidden">
@@ -767,13 +762,18 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
                       </div>
                       <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
                         <div className="space-y-1">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-4 h-4 rounded-full bg-[#e6f4ea] text-[#137333] font-bold text-[9px] flex items-center justify-center shrink-0">
-                              {sellerInitial}
+                          <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <div className="w-4 h-4 rounded-full bg-[#e6f4ea] text-[#137333] font-bold text-[9px] flex items-center justify-center shrink-0">
+                                {sellerInitial}
+                              </div>
+                              <span className="text-[11px] font-semibold text-[#202124] truncate">
+                                {item.sellerName || 'Verified Seller'}
+                              </span>
                             </div>
-                            <span className="text-[11px] font-semibold text-[#202124] truncate">
-                              {item.sellerName || 'Verified Seller'}
-                            </span>
+                            {isItemPending && (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#1dbf73] shrink-0" />
+                            )}
                           </div>
                           <h4 className="font-medium text-xs text-[#202124] group-hover:text-[#1dbf73] line-clamp-2 leading-snug">
                             {item.title}
@@ -789,7 +789,7 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
                           </span>
                         </div>
                       </div>
-                    </Link>
+                    </NavLink>
                   );
                 })}
               </div>
@@ -798,10 +798,12 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
                 {relatedListings.map((item, idx) => {
                   const itemUrl = buildChillyUrl({ listing: item, categories });
                   const sellerInitial = (item.sellerName || 'S').charAt(0).toUpperCase();
+                  const isItemPending = isUrlPending(itemUrl);
                   return (
-                    <Link
+                    <NavLink
                       key={item.id}
                       href={itemUrl}
+                      showSpinner={false}
                       className="bg-white rounded-xl border border-[#dadce0] hover:border-[#1dbf73] p-3.5 sm:p-4 shadow-2xs hover:shadow-md cursor-pointer transition-all group flex flex-col sm:flex-row items-start sm:items-center gap-4"
                     >
                       <div className="hidden sm:flex w-8 h-8 rounded-lg bg-[#f8f9fa] border border-[#dadce0] text-[#5f6368] group-hover:border-[#1dbf73] group-hover:text-[#1dbf73] font-mono text-xs font-bold tabular-nums items-center justify-center shrink-0 transition-colors">
@@ -849,10 +851,14 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
                         </div>
                         <span className="px-3 py-1.5 rounded-md bg-[#f8f9fa] group-hover:bg-[#1dbf73] text-[#202124] group-hover:text-white border border-[#dadce0] group-hover:border-[#1dbf73] text-xs font-semibold transition-colors flex items-center gap-1">
                           <span>View Ad</span>
-                          <ChevronRight className="w-3.5 h-3.5" />
+                          {isItemPending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          )}
                         </span>
                       </div>
-                    </Link>
+                    </NavLink>
                   );
                 })}
               </div>
