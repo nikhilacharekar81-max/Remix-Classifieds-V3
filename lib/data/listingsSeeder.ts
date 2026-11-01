@@ -176,7 +176,7 @@ const CATEGORY_TEMPLATES: Record<string, SeedTemplate[]> = {
       ],
     },
     {
-      subcategoryId: 'sub_elec_laptops_pcs',
+      subcategoryId: 'sub_elec_computers_laptops',
       titles: [
         'HP Pavilion 15 Ryzen 5 Hexa Core Thin Laptop',
         'Apple MacBook Air M1 8GB RAM 256GB Space Grey',
