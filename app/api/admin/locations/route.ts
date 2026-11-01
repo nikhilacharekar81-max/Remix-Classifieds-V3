@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { locationRepository } from '@/server/repositories/location.repository';
+import { invalidateLocationReferenceCache } from '@/server/cache/reference-data.cache';
 import { getAuthenticatedUser } from '@/lib/auth/session';
 
 export async function GET() {
@@ -44,6 +45,8 @@ export async function POST(req: NextRequest) {
       longitude: body.longitude ? Number(body.longitude) : undefined,
       orderIndex: body.orderIndex || 0,
     });
+
+    invalidateLocationReferenceCache();
 
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {

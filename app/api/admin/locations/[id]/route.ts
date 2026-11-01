@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { locationRepository } from '@/server/repositories/location.repository';
+import { invalidateLocationReferenceCache } from '@/server/cache/reference-data.cache';
 import { getAuthenticatedUser } from '@/lib/auth/session';
 
 export async function PUT(
@@ -19,6 +20,7 @@ export async function PUT(
     const body = await req.json();
     const updateData: any = {};
     if (body.name !== undefined) updateData.name = body.name;
+    if (body.slug !== undefined) updateData.slug = body.slug;
     if (body.type !== undefined) updateData.type = body.type;
     if (body.parentId !== undefined) updateData.parentId = body.parentId;
     if (body.code !== undefined) updateData.code = body.code;
@@ -31,6 +33,8 @@ export async function PUT(
     if (!updated) {
       return NextResponse.json({ error: 'Location not found' }, { status: 404 });
     }
+
+    invalidateLocationReferenceCache();
 
     return NextResponse.json(updated);
   } catch (error: any) {
@@ -57,6 +61,8 @@ export async function DELETE(
     if (!success) {
       return NextResponse.json({ error: 'Location not found' }, { status: 404 });
     }
+
+    invalidateLocationReferenceCache();
 
     return NextResponse.json({ success: true, message: 'Location deleted' });
   } catch (error: any) {

@@ -408,27 +408,21 @@ export const Footer: React.FC = () => {
               Explore Popular Categories (Canonical Static URLs)
             </h4>
             <div className="flex flex-wrap gap-2 text-xs">
-              {[
-                { id: 'cat_jobs', label: 'Jobs & Vacancies' },
-                { id: 'cat_bikes', label: 'Bikes & Scooters' },
-                { id: 'cat_electronics', label: 'Electronics & Laptops' },
-                { id: 'cat_mobiles', label: 'Mobiles & Tablets' },
-                { id: 'cat_cars', label: 'Cars & Auto Spares' },
-                { id: 'cat_services', label: 'Local Services' },
-                { id: 'cat_pets', label: 'Pets & Aquariums' },
-              ].map((cat) => {
-                const canonicalUrl = buildChillyUrl({ categoryId: cat.id, categories });
-                return (
-                  <Link
-                    key={cat.id}
-                    href={canonicalUrl}
-                    onClick={() => handleCategoryClick(cat.id)}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition min-h-[48px] flex items-center font-medium border border-slate-700/40 cursor-pointer"
-                  >
-                    {cat.label}
-                  </Link>
-                );
-              })}
+              {categories
+                .filter((cat) => !cat.parentId && cat.isActive)
+                .map((cat) => {
+                  const canonicalUrl = buildChillyUrl({ categoryId: cat.id, categories });
+                  return (
+                    <Link
+                      key={cat.id}
+                      href={canonicalUrl}
+                      onClick={() => handleCategoryClick(cat.id)}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition min-h-[48px] flex items-center font-medium border border-slate-700/40 cursor-pointer"
+                    >
+                      {cat.name}
+                    </Link>
+                  );
+                })}
             </div>
           </div>
 

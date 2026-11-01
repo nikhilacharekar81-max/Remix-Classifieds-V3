@@ -2,6 +2,11 @@ import { adminRepository } from '@/server/repositories/admin.repository';
 import { categoryRepository } from '@/server/repositories/category.repository';
 import { locationRepository } from '@/server/repositories/location.repository';
 import { cmsRepository } from '@/server/repositories/cms.repository';
+import {
+  invalidateCategoryReferenceCache,
+  invalidateLocationReferenceCache,
+  invalidateSettingsReferenceCache,
+} from '@/server/cache/reference-data.cache';
 import { boostService } from './boost.service';
 import {
   Category,
@@ -53,6 +58,7 @@ export class AdminService {
       freeListingsQuota: catData.freeListingsQuota || 3,
     });
 
+    invalidateCategoryReferenceCache();
     await this.recordAudit('CATEGORY_CREATED', 'Categories', id, category.name, `Created category "${category.name}"`);
     return category;
   }
@@ -73,6 +79,7 @@ export class AdminService {
 
     const updated = await categoryRepository.update(id, fields);
     if (updated) {
+      invalidateCategoryReferenceCache();
       await this.recordAudit('CATEGORY_UPDATED', 'Categories', id, updated.name, `Updated category "${updated.name}"`);
     }
     return updated;
@@ -81,8 +88,11 @@ export class AdminService {
   public async deleteCategory(id: string): Promise<boolean> {
     const cat = await categoryRepository.findById(id);
     const success = await categoryRepository.delete(id);
-    if (success && cat) {
-      await this.recordAudit('CATEGORY_DELETED', 'Categories', id, cat.name, `Deleted category "${cat.name}"`);
+    if (success) {
+      invalidateCategoryReferenceCache();
+      if (cat) {
+        await this.recordAudit('CATEGORY_DELETED', 'Categories', id, cat.name, `Deleted category "${cat.name}"`);
+      }
     }
     return success;
   }
@@ -112,7 +122,7 @@ export class AdminService {
 
   public async addLocation(locData: Omit<LocationItem, 'id' | 'listingCount'>): Promise<LocationItem> {
     const id = `loc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    return await locationRepository.create({
+    const created = await locationRepository.create({
       id,
       type: locData.type,
       name: locData.name,
@@ -125,6 +135,8 @@ export class AdminService {
       popular: locData.popular ?? false,
       orderIndex: locData.orderIndex || 0,
     });
+    invalidateLocationReferenceCache();
+    return created;
   }
 
   public async updateLocation(id: string, updatedData: Partial<LocationItem>): Promise<LocationItem | null> {
@@ -139,11 +151,19 @@ export class AdminService {
     if (updatedData.popular !== undefined) fields.popular = updatedData.popular;
     if (updatedData.orderIndex !== undefined) fields.orderIndex = updatedData.orderIndex;
 
-    return await locationRepository.update(id, fields);
+    const updated = await locationRepository.update(id, fields);
+    if (updated) {
+      invalidateLocationReferenceCache();
+    }
+    return updated;
   }
 
   public async deleteLocation(id: string): Promise<boolean> {
-    return await locationRepository.delete(id);
+    const success = await locationRepository.delete(id);
+    if (success) {
+      invalidateLocationReferenceCache();
+    }
+    return success;
   }
 
   // System Settings
@@ -156,6 +176,7 @@ export class AdminService {
     actor?: { id?: string; name?: string; ipAddress?: string }
   ): Promise<SystemSettings> {
     const updated = await adminRepository.updateSystemSettings(newSettings);
+    invalidateSettingsReferenceCache();
     await this.recordAudit(
       'SETTINGS_UPDATED',
       'Settings',

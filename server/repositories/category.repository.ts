@@ -3,6 +3,7 @@ import * as schema from '@/src/db/schema';
 import { eq, asc, and, gte, sql } from 'drizzle-orm';
 import { Category, CustomFieldDefinition } from '@/lib/types';
 import { ensureDatabaseSeeded } from '@/server/seed-postgres';
+import { getCategoriesWithLiveCounts } from '@/server/cache/reference-data.cache';
 
 export class CategoryRepository {
   private mapRowToCategory(row: typeof schema.categories.$inferSelect, listingCount = 0): Category {
@@ -23,12 +24,36 @@ export class CategoryRepository {
     };
   }
 
-  public async findAll(): Promise<Category[]> {
+  /**
+   * Fetches only the static category and subcategory hierarchy rows from PostgreSQL
+   * without dynamic listing counts. Used as the source for the shared reference-data cache.
+   */
+  public async findAllHierarchy(): Promise<Category[]> {
+    try {
+      await ensureDatabaseSeeded();
+      const rows = await db
+        .select()
+        .from(schema.categories)
+        .orderBy(asc(schema.categories.orderIndex));
+      return rows.map((r) => this.mapRowToCategory(r, 0));
+    } catch (error) {
+      console.error('CategoryRepository.findAllHierarchy error:', error);
+      throw new Error('Failed to find category hierarchy', { cause: error });
+    }
+  }
+
+  /**
+   * Computes live approved, non-expired listing counts grouped by category and subcategory.
+   * Never cached as static reference data.
+   */
+  public async findLiveListingCounts(): Promise<{
+    parentCountMap: Record<string, number>;
+    subCountMap: Record<string, number>;
+  }> {
     try {
       await ensureDatabaseSeeded();
       const now = new Date();
-      const [rows, catCounts, subCounts] = await Promise.all([
-        db.select().from(schema.categories).orderBy(asc(schema.categories.orderIndex)),
+      const [catCounts, subCounts] = await Promise.all([
         db
           .select({
             categoryId: schema.listings.categoryId,
@@ -67,12 +92,19 @@ export class CategoryRepository {
         }
       }
 
-      return rows.map((r) => {
-        const count = r.parentId
-          ? (subCountMap[r.id] || 0)
-          : (parentCountMap[r.id] || 0);
-        return this.mapRowToCategory(r, count);
-      });
+      return { parentCountMap, subCountMap };
+    } catch (error) {
+      console.error('CategoryRepository.findLiveListingCounts error:', error);
+      throw new Error('Failed to compute live category listing counts', { cause: error });
+    }
+  }
+
+  /**
+   * Returns categories combining cached category/subcategory reference data with live listing counts.
+   */
+  public async findAll(): Promise<Category[]> {
+    try {
+      return await getCategoriesWithLiveCounts();
     } catch (error) {
       console.error('CategoryRepository.findAll error:', error);
       throw new Error('Failed to find categories', { cause: error });

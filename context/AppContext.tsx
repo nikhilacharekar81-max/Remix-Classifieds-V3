@@ -310,6 +310,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialServerDat
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(INITIAL_EMAIL_TEMPLATES);
   const [newsletters, setNewsletters] = useState<NewsletterCampaign[]>(INITIAL_NEWSLETTERS);
 
+  // Sync server-provided reference data when root layout revalidates
+  useEffect(() => {
+    if (initialServerData?.categories && initialServerData.categories.length > 0) {
+      setCategories(initialServerData.categories);
+    }
+  }, [initialServerData?.categories]);
+
+  useEffect(() => {
+    if (initialServerData?.locations && initialServerData.locations.length > 0) {
+      setLocations(initialServerData.locations);
+    }
+  }, [initialServerData?.locations]);
+
+  useEffect(() => {
+    if (initialServerData?.settings) {
+      setSettings((prev) => ({ ...prev, ...initialServerData.settings }));
+    }
+  }, [initialServerData?.settings]);
+
   // CMS Pages & Footer Modal State
   const [cmsPages, setCmsPages] = useState<CmsPage[]>(() =>
     initialServerData?.cmsPages && initialServerData.cmsPages.length > 0
@@ -1442,63 +1461,124 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialServerDat
     while (categories.some(c => c.id === id)) {
       id = `${baseId}_${counter++}`;
     }
-    const newCat: Category = { ...catData, id, listingCount: 0 };
-    setCategories(prev => [...prev, newCat]);
-    recordAuditLog(
-      catData.parentId ? 'CREATE_SUBCATEGORY' : 'CREATE_CATEGORY',
-      'Marketplace / Categories',
-      id,
-      newCat.name,
-      catData.parentId ? 'Added new subcategory under parent category' : 'Added new category via configuration panel'
-    );
-    addToast({
-      type: 'success',
-      title: catData.parentId ? 'Subcategory Created' : 'Category Created',
-      message: `"${newCat.name}" has been added to taxonomy.`,
-    });
-    fetch('/api/admin/categories', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newCat),
-    }).catch(() => {});
+    const payload: Category = { ...catData, id, listingCount: 0 };
+
+    void (async () => {
+      try {
+        const res = await fetch('/api/admin/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(data?.error || 'Failed to create category');
+        }
+        const createdCat: Category = data && data.id ? { ...payload, ...data } : payload;
+        setCategories(prev => [...prev, createdCat]);
+        recordAuditLog(
+          catData.parentId ? 'CREATE_SUBCATEGORY' : 'CREATE_CATEGORY',
+          'Marketplace / Categories',
+          createdCat.id,
+          createdCat.name,
+          catData.parentId ? 'Added new subcategory under parent category' : 'Added new category via configuration panel'
+        );
+        addToast({
+          type: 'success',
+          title: catData.parentId ? 'Subcategory Created' : 'Category Created',
+          message: `"${createdCat.name}" has been added to taxonomy.`,
+        });
+      } catch (err: any) {
+        addToast({
+          type: 'error',
+          title: catData.parentId ? 'Subcategory Creation Failed' : 'Category Creation Failed',
+          message: err?.message || 'Database operation failed.',
+        });
+      }
+    })();
   };
 
   const updateCategory = (cat: Category) => {
-    setCategories(prev => prev.map(c => (c.id === cat.id ? cat : c)));
-    recordAuditLog('UPDATE_CATEGORY', 'Marketplace / Categories', cat.id, cat.name, 'Updated category SEO & hierarchy configuration');
-    addToast({ type: 'success', title: 'Category Updated', message: cat.name });
-    fetch(`/api/admin/categories/${cat.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cat),
-    }).catch(() => {});
+    void (async () => {
+      try {
+        const res = await fetch(`/api/admin/categories/${cat.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cat),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(data?.error || 'Failed to update category');
+        }
+        const updatedCat: Category = data && data.id ? { ...cat, ...data, listingCount: cat.listingCount } : cat;
+        setCategories(prev => prev.map(c => (c.id === cat.id ? updatedCat : c)));
+        recordAuditLog('UPDATE_CATEGORY', 'Marketplace / Categories', cat.id, updatedCat.name, 'Updated category SEO & hierarchy configuration');
+        addToast({ type: 'success', title: 'Category Updated', message: updatedCat.name });
+      } catch (err: any) {
+        addToast({
+          type: 'error',
+          title: 'Category Update Failed',
+          message: err?.message || 'Database operation failed.',
+        });
+      }
+    })();
   };
 
   const toggleCategoryStatus = (id: string) => {
     const target = categories.find(c => c.id === id);
     if (!target) return;
     const updatedStatus = !target.isActive;
-    setCategories(prev =>
-      prev.map(c => (c.id === id ? { ...c, isActive: updatedStatus } : c))
-    );
-    fetch(`/api/admin/categories/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isActive: updatedStatus }),
-    }).catch(() => {});
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/admin/categories/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isActive: updatedStatus }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(data?.error || 'Failed to update category status');
+        }
+        setCategories(prev =>
+          prev.map(c => (c.id === id ? { ...c, isActive: updatedStatus } : c))
+        );
+      } catch (err: any) {
+        addToast({
+          type: 'error',
+          title: 'Status Update Failed',
+          message: err?.message || 'Database operation failed.',
+        });
+      }
+    })();
   };
 
   const deleteCategory = (id: string) => {
     const cat = categories.find(c => c.id === id);
-    // Delete this category and any child subcategories
-    setCategories(prev => prev.filter(c => c.id !== id && c.parentId !== id));
-    if (cat) {
-      recordAuditLog('DELETE_CATEGORY', 'Marketplace / Categories', id, cat.name, 'Deleted category and associated subcategories');
-      addToast({ type: 'warning', title: 'Category Deleted', message: cat.name });
-    }
-    fetch(`/api/admin/categories/${id}`, {
-      method: 'DELETE',
-    }).catch(() => {});
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/admin/categories/${id}`, {
+          method: 'DELETE',
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(data?.error || 'Failed to delete category');
+        }
+        // Delete this category and any child subcategories after DB success
+        setCategories(prev => prev.filter(c => c.id !== id && c.parentId !== id));
+        if (cat) {
+          recordAuditLog('DELETE_CATEGORY', 'Marketplace / Categories', id, cat.name, 'Deleted category and associated subcategories');
+          addToast({ type: 'warning', title: 'Category Deleted', message: cat.name });
+        }
+      } catch (err: any) {
+        addToast({
+          type: 'error',
+          title: 'Category Deletion Failed',
+          message: err?.message || 'Database operation failed.',
+        });
+      }
+    })();
   };
 
   const addCustomField = (field: Omit<CustomFieldDefinition, 'id'>) => {

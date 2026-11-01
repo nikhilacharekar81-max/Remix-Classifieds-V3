@@ -2,9 +2,11 @@ import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans, DM_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { ClientAppProvider } from '@/components/ClientAppProvider';
-import { categoryRepository } from '@/server/repositories/category.repository';
-import { locationRepository } from '@/server/repositories/location.repository';
-import { adminRepository } from '@/server/repositories/admin.repository';
+import {
+  getCategoriesWithLiveCounts,
+  getCachedLocations,
+  getCachedSystemSettings,
+} from '@/server/cache/reference-data.cache';
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -56,9 +58,9 @@ export default async function RootLayout({
   let initialServerData = undefined;
   try {
     const [categories, locations, settings] = await Promise.all([
-      categoryRepository.findAll(),
-      locationRepository.findAll(),
-      adminRepository.getSystemSettings(),
+      getCategoriesWithLiveCounts(),
+      getCachedLocations(),
+      getCachedSystemSettings(),
     ]);
     initialServerData = {
       categories,

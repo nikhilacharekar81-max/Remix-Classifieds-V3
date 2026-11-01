@@ -2,6 +2,7 @@ import { db } from '@/src/db/index';
 import * as schema from '@/src/db/schema';
 import { eq, asc } from 'drizzle-orm';
 import { LocationItem } from '@/lib/types';
+import { getCachedLocations } from '@/server/cache/reference-data.cache';
 
 export class LocationRepository {
   private mapRowToLocation(row: typeof schema.locations.$inferSelect): LocationItem {
@@ -20,10 +21,19 @@ export class LocationRepository {
     };
   }
 
-  public async findAll(): Promise<LocationItem[]> {
+  public async findAllDirect(): Promise<LocationItem[]> {
     try {
       const rows = await db.select().from(schema.locations).orderBy(asc(schema.locations.orderIndex));
       return rows.map((r) => this.mapRowToLocation(r));
+    } catch (error) {
+      console.error('LocationRepository.findAllDirect error:', error);
+      throw new Error('Failed to find locations', { cause: error });
+    }
+  }
+
+  public async findAll(): Promise<LocationItem[]> {
+    try {
+      return await getCachedLocations();
     } catch (error) {
       console.error('LocationRepository.findAll error:', error);
       throw new Error('Failed to find locations', { cause: error });

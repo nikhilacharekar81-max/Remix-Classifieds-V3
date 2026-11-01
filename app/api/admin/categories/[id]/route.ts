@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { categoryRepository } from '@/server/repositories/category.repository';
+import { invalidateCategoryReferenceCache } from '@/server/cache/reference-data.cache';
 import { getAuthenticatedUser } from '@/lib/auth/session';
 
 export async function PUT(
@@ -35,6 +36,8 @@ export async function PUT(
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
+    invalidateCategoryReferenceCache();
+
     return NextResponse.json(updated);
   } catch (error: any) {
     console.error(`API /api/admin/categories/${id} PUT error:`, error);
@@ -60,6 +63,8 @@ export async function DELETE(
     if (!success) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
+
+    invalidateCategoryReferenceCache();
 
     return NextResponse.json({ success: true, message: 'Category deleted' });
   } catch (error: any) {

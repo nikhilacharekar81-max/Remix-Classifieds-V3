@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { categoryRepository } from '@/server/repositories/category.repository';
+import { invalidateCategoryReferenceCache } from '@/server/cache/reference-data.cache';
 import { getAuthenticatedUser } from '@/lib/auth/session';
 
 export async function GET() {
@@ -46,6 +47,8 @@ export async function POST(req: NextRequest) {
       postingFee: body.postingFee ? Number(body.postingFee) : 0,
       freeListingsQuota: body.freeListingsQuota ?? 3,
     });
+
+    invalidateCategoryReferenceCache();
 
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {

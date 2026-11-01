@@ -1,9 +1,14 @@
+import { cache } from 'react';
 import { AppClientRouter } from '@/components/AppClientRouter';
 import { listingRepository } from '@/server/repositories/listing.repository';
-import { categoryRepository } from '@/server/repositories/category.repository';
+import { getCachedCategoryHierarchy } from '@/server/cache/reference-data.cache';
 import { buildChillyUrl, serializeJsonLd } from '@/lib/utils/seoAndUrlHelper';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
+
+const getListingById = cache(async (id: string) => {
+  return listingRepository.findById(id);
+});
 
 export async function generateMetadata({
   params,
@@ -12,8 +17,8 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const [listing, categories] = await Promise.all([
-    listingRepository.findById(id),
-    categoryRepository.findAll(),
+    getListingById(id),
+    getCachedCategoryHierarchy(),
   ]);
 
   if (!listing || listing.status !== 'approved') {
@@ -52,7 +57,7 @@ export default async function ItemDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const listing = await listingRepository.findById(id);
+  const listing = await getListingById(id);
 
   if (!listing || listing.status !== 'approved') {
     notFound();

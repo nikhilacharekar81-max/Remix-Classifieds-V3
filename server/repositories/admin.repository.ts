@@ -2,6 +2,7 @@ import { db } from '@/src/db/index';
 import * as schema from '@/src/db/schema';
 import { desc, eq, sql } from 'drizzle-orm';
 import { AuditLog, SystemSettings } from '@/lib/types';
+import { getCachedSystemSettings } from '@/server/cache/reference-data.cache';
 import crypto from 'node:crypto';
 
 export class AdminRepository {
@@ -69,7 +70,7 @@ export class AdminRepository {
     }
   }
 
-  public async getSystemSettings(): Promise<SystemSettings> {
+  public async getSystemSettingsDirect(): Promise<SystemSettings> {
     try {
       const rows = await db.select().from(schema.systemSettings).where(eq(schema.systemSettings.id, 'primary')).limit(1);
       if (!rows.length) {
@@ -110,6 +111,15 @@ export class AdminRepository {
         paidFeatures: (r.paidFeaturesConfig as any) || {},
       };
     } catch (error) {
+      console.error('AdminRepository.getSystemSettingsDirect error:', error);
+      throw new Error('Failed to get system settings', { cause: error });
+    }
+  }
+
+  public async getSystemSettings(): Promise<SystemSettings> {
+    try {
+      return await getCachedSystemSettings();
+    } catch (error) {
       console.error('AdminRepository.getSystemSettings error:', error);
       throw new Error('Failed to get system settings', { cause: error });
     }
@@ -145,7 +155,7 @@ export class AdminRepository {
           set: fields,
         });
 
-      return await this.getSystemSettings();
+      return await this.getSystemSettingsDirect();
     } catch (error) {
       console.error('AdminRepository.updateSystemSettings error:', error);
       throw new Error('Failed to update system settings in PostgreSQL', { cause: error });

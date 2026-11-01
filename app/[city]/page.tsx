@@ -1,8 +1,10 @@
 import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { locationRepository } from '@/server/repositories/location.repository';
-import { categoryRepository } from '@/server/repositories/category.repository';
+import {
+  getCachedCategoryHierarchy,
+  getCachedLocations,
+} from '@/server/cache/reference-data.cache';
 import { listingRepository } from '@/server/repositories/listing.repository';
 import { listingService } from '@/server/services/listing.service';
 import { AppClientRouter } from '@/components/AppClientRouter';
@@ -18,8 +20,8 @@ interface CityPageProps {
 const getCityPageContext = cache(async (cityParam: string) => {
   const { cleanSlug } = stripChillySuffixes(cityParam);
   const [locations, categories] = await Promise.all([
-    locationRepository.findAll(),
-    categoryRepository.findAll(),
+    getCachedLocations(),
+    getCachedCategoryHierarchy(),
   ]);
 
   const loc =

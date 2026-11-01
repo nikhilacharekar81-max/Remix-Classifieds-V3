@@ -2,8 +2,10 @@ import { cache } from 'react';
 import type { Metadata } from 'next';
 import { listingRepository } from '@/server/repositories/listing.repository';
 import { listingService } from '@/server/services/listing.service';
-import { categoryRepository } from '@/server/repositories/category.repository';
-import { locationRepository } from '@/server/repositories/location.repository';
+import {
+  getCachedCategoryHierarchy,
+  getCachedLocations,
+} from '@/server/cache/reference-data.cache';
 import { stripChillySuffixes, unslugifyCity, unslugifyCategory, serializeJsonLd } from '@/lib/utils/seoAndUrlHelper';
 import { AppClientRouter } from '@/components/AppClientRouter';
 import { notFound } from 'next/navigation';
@@ -24,8 +26,8 @@ const getSubcategoryContext = cache(async (cityParam: string, listingSlugParam: 
   const { cleanSlug: cleanThirdSlug } = stripChillySuffixes(listingSlugParam);
 
   const [categories, locations] = await Promise.all([
-    categoryRepository.findAll(),
-    locationRepository.findAll(),
+    getCachedCategoryHierarchy(),
+    getCachedLocations(),
   ]);
 
   const loc =
