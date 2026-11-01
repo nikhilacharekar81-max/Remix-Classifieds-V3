@@ -16,9 +16,14 @@ import {
 } from '@/lib/data/initialData';
 import { seedCategoriesWithTenAds } from '@/lib/data/listingsSeeder';
 
+let isDatabaseSeeded = false;
 let activeSeedPromise: Promise<void> | null = null;
 
 export async function ensureDatabaseSeeded(): Promise<void> {
+  if (isDatabaseSeeded) {
+    return;
+  }
+
   if (activeSeedPromise) {
     return activeSeedPromise;
   }
@@ -32,7 +37,9 @@ export async function ensureDatabaseSeeded(): Promise<void> {
       if (existing.length === 0) {
         await seedPostgres();
       }
+      isDatabaseSeeded = true;
     } catch (err) {
+      isDatabaseSeeded = false;
       console.error('ensureDatabaseSeeded check failed:', err);
     } finally {
       activeSeedPromise = null;

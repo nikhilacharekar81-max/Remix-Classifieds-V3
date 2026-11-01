@@ -1,5 +1,6 @@
 'use client';
 import React, { useMemo } from 'react';
+import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import {
   ShieldCheck,
@@ -59,19 +60,13 @@ export const Footer: React.FC = () => {
       .sort((a, b) => b.count - a.count);
   }, [listings]);
 
-  const handleCategoryClick = (e: React.MouseEvent, catId: string) => {
-    e.preventDefault();
+  const handleCategoryClick = (catId: string) => {
     setSelectedMarketplaceCategory(catId);
-    const targetUrl = buildChillyUrl({ categoryId: catId, categories });
-    navigateTo(targetUrl);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleCityClick = (e: React.MouseEvent, cityName: string) => {
-    e.preventDefault();
+  const handleCityClick = (cityName: string) => {
     setSelectedMarketplaceCity(cityName);
-    const targetUrl = buildChillyUrl({ city: cityName, categories });
-    navigateTo(targetUrl);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -424,14 +419,14 @@ export const Footer: React.FC = () => {
               ].map((cat) => {
                 const canonicalUrl = buildChillyUrl({ categoryId: cat.id, categories });
                 return (
-                  <a
+                  <Link
                     key={cat.id}
                     href={canonicalUrl}
-                    onClick={(e) => handleCategoryClick(e, cat.id)}
+                    onClick={() => handleCategoryClick(cat.id)}
                     className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition min-h-[48px] flex items-center font-medium border border-slate-700/40 cursor-pointer"
                   >
                     {cat.label}
-                  </a>
+                  </Link>
                 );
               })}
             </div>
@@ -448,22 +443,22 @@ export const Footer: React.FC = () => {
               </span>
             </div>
             <div className="flex flex-wrap gap-1.5 text-xs">
-              <a
+              <Link
                 href={buildChillyUrl({ city: 'All India', categories })}
-                onClick={(e) => handleCityClick(e, 'All India')}
+                onClick={() => handleCityClick('All India')}
                 className="px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 font-bold transition border border-emerald-700/50 flex items-center gap-1 min-h-[44px] cursor-pointer"
               >
                 <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span>All India</span>
-              </a>
+              </Link>
 
               {activeCitiesWithListings.map(({ name, count }) => {
                 const canonicalUrl = buildChillyUrl({ city: name, categories });
                 return (
-                  <a
+                  <Link
                     key={name}
                     href={canonicalUrl}
-                    onClick={(e) => handleCityClick(e, name)}
+                    onClick={() => handleCityClick(name)}
                     className="px-2.5 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 transition text-xs font-medium border border-slate-700/50 flex items-center gap-1.5 min-h-[44px] cursor-pointer"
                   >
                     <MapPin className="w-3 h-3 text-cyan-400 shrink-0" />
@@ -471,7 +466,7 @@ export const Footer: React.FC = () => {
                     <span className="text-[10px] text-slate-400 bg-slate-900 px-1.5 py-0.2 rounded-full font-semibold">
                       {count}
                     </span>
-                  </a>
+                  </Link>
                 );
               })}
             </div>

@@ -1,5 +1,6 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { Listing } from '@/lib/types';
 import {
@@ -61,13 +62,23 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
     currentUser,
   } = useApp();
   const sourceListings = initialListings && initialListings.length > 0 ? initialListings : listings;
-  const listing = findListingById(sourceListings, listingId) || findListingById(listings, listingId) || initialListing || null;
+  const listing =
+    (initialListing && findListingById([initialListing], listingId)) ||
+    findListingById(sourceListings, listingId) ||
+    findListingById(listings, listingId) ||
+    initialListing ||
+    null;
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [showPhone, setShowPhone] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isBoostModalOpen, setIsBoostModalOpen] = useState(false);
   const [similarAdsLayout, setSimilarAdsLayout] = useState<'grid' | 'listicle'>('grid');
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+    setShowPhone(false);
+  }, [listingId]);
 
   // Check if active user is seller of this ad
   const isOwner = !!(listing && currentUser && listing.sellerId === currentUser.id);
@@ -93,12 +104,12 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
         <p className="text-sm text-slate-500 max-w-md mt-1 mb-6">
           The listing #{listingId} may have been sold, removed, or expired.
         </p>
-        <a
+        <Link
           href="/"
           className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow transition-all flex items-center gap-2"
         >
           <ArrowLeft className="w-4 h-4" /> Return to Classifieds Home
-        </a>
+        </Link>
       </div>
     );
   }
@@ -202,13 +213,13 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           {/* Logo */}
           <div className="flex items-center gap-5">
-            <a
+            <Link
               href="/"
               className="flex items-baseline font-black text-2xl tracking-tight text-[#202124] cursor-pointer select-none"
             >
               <span>chillyads</span>
               <span className="text-[#1dbf73] text-3xl leading-none">.</span>
-            </a>
+            </Link>
 
             {/* Typeable Location Selector */}
             <div className="hidden sm:block">
@@ -248,21 +259,21 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
               <span>Cloud Console</span>
             </button>
 
-            <a
+            <Link
               href="/my-account"
               className="px-3 py-2 text-[#3c4043] hover:text-[#202124] font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer rounded-md hover:bg-[#f1f3f4]"
               title="User Account & Ads Panel"
             >
               <User className="w-4 h-4 text-[#5f6368]" />
               <span className="hidden sm:inline">My Account</span>
-            </a>
+            </Link>
 
-            <a
+            <Link
               href="/post"
               className="px-4 py-2 bg-[#1dbf73] hover:bg-[#19a463] text-white font-bold rounded-md text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" /> Post a Gig / Ad
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -283,43 +294,43 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
       <nav aria-label="Breadcrumb" className="bg-white border-b border-slate-200 listing-breadcrumb text-slate-500">
         <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between text-xs overflow-x-auto whitespace-nowrap scrollbar-none">
           <div className="flex items-center gap-2">
-            <a
+            <Link
               href="/"
               className="hover:text-blue-600 font-medium flex items-center gap-1 shrink-0"
             >
               Home
-            </a>
+            </Link>
             {listing.location?.city && (
               <>
                 <span className="text-slate-300">/</span>
-                <a
+                <Link
                   href={cityUrl}
                   className="hover:text-blue-600 font-medium transition-colors cursor-pointer shrink-0"
                 >
                   {listing.location.city}
-                </a>
+                </Link>
               </>
             )}
             <span className="text-slate-300">/</span>
             {category && (
               <>
-                <a
+                <Link
                   href={categoryUrl}
                   className="hover:text-blue-600 font-medium transition-colors cursor-pointer shrink-0"
                 >
                   {category.name}
-                </a>
+                </Link>
                 <span className="text-slate-300">/</span>
               </>
             )}
             {subcategory && (
               <>
-                <a
+                <Link
                   href={subcategoryUrl}
                   className="hover:text-blue-600 font-medium transition-colors cursor-pointer shrink-0"
                 >
                   {subcategory.name}
-                </a>
+                </Link>
                 <span className="text-slate-300">/</span>
               </>
             )}
@@ -741,7 +752,7 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
                   const itemUrl = buildChillyUrl({ listing: item, categories });
                   const sellerInitial = (item.sellerName || 'S').charAt(0).toUpperCase();
                   return (
-                    <a
+                    <Link
                       key={item.id}
                       href={itemUrl}
                       className="bg-white rounded-xl border border-[#dadce0] hover:border-[#1dbf73] overflow-hidden shadow-2xs hover:shadow-md cursor-pointer transition-all group flex flex-col justify-between"
@@ -778,7 +789,7 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
                           </span>
                         </div>
                       </div>
-                    </a>
+                    </Link>
                   );
                 })}
               </div>
@@ -788,7 +799,7 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
                   const itemUrl = buildChillyUrl({ listing: item, categories });
                   const sellerInitial = (item.sellerName || 'S').charAt(0).toUpperCase();
                   return (
-                    <a
+                    <Link
                       key={item.id}
                       href={itemUrl}
                       className="bg-white rounded-xl border border-[#dadce0] hover:border-[#1dbf73] p-3.5 sm:p-4 shadow-2xs hover:shadow-md cursor-pointer transition-all group flex flex-col sm:flex-row items-start sm:items-center gap-4"
@@ -841,7 +852,7 @@ export const ListingDetailPage: React.FC<ListingDetailPageProps> = ({
                           <ChevronRight className="w-3.5 h-3.5" />
                         </span>
                       </div>
-                    </a>
+                    </Link>
                   );
                 })}
               </div>

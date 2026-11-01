@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import { listingRepository } from '@/server/repositories/listing.repository';
 import { listingService } from '@/server/services/listing.service';
@@ -14,13 +15,48 @@ interface ListingOrSubcategoryPageProps {
   searchParams?: Promise<Record<string, string | undefined>>;
 }
 
+const getListingById = cache(async (id: string) => {
+  return listingRepository.findById(id);
+});
+
+const getSubcategoryContext = cache(async (cityParam: string, listingSlugParam: string) => {
+  const { cleanSlug: cleanCitySlug } = stripChillySuffixes(cityParam);
+  const { cleanSlug: cleanThirdSlug } = stripChillySuffixes(listingSlugParam);
+
+  const [categories, locations] = await Promise.all([
+    categoryRepository.findAll(),
+    locationRepository.findAll(),
+  ]);
+
+  const loc =
+    locations.find((l) => l.slug === cleanCitySlug || l.slug === cityParam) ?? null;
+  const cityName = loc ? loc.name : unslugifyCity(cityParam, locations).cityName;
+
+  const matchedSubCat =
+    categories.find((c) => c.slug === cleanThirdSlug || c.slug === listingSlugParam) ||
+    unslugifyCategory(listingSlugParam, categories).categoryObj;
+
+  const parentCat = matchedSubCat
+    ? categories.find((c) => c.id === matchedSubCat.parentId)
+    : undefined;
+
+  return {
+    categories,
+    locations,
+    loc,
+    cityName,
+    matchedSubCat,
+    parentCat,
+  };
+});
+
 export async function generateMetadata({ params, searchParams }: ListingOrSubcategoryPageProps): Promise<Metadata> {
   const { city, category, listingSlug } = await params;
   const resolvedSearch = searchParams ? await searchParams : {};
-  const { itemId, cleanSlug: cleanThirdSlug } = stripChillySuffixes(listingSlug);
+  const { itemId } = stripChillySuffixes(listingSlug);
 
   if (itemId) {
-    const listing = await listingRepository.findById(itemId);
+    const listing = await getListingById(itemId);
     if (!listing || listing.status !== 'approved') {
       return {
         title: 'Listing Not Found | Classifieds V2',
@@ -67,20 +103,11 @@ export async function generateMetadata({ params, searchParams }: ListingOrSubcat
       ? `/${city}/${category}/${listingSlug}?page=${pageNum}`
       : `/${city}/${category}/${listingSlug}`;
 
-  const { cleanSlug: cleanCitySlug } = stripChillySuffixes(city);
-  const [loc, categories] = await Promise.all([
-    locationRepository.findBySlug(cleanCitySlug).then((r) => r || locationRepository.findBySlug(city)),
-    categoryRepository.findAll(),
-  ]);
+  const { cityName, matchedSubCat } = await getSubcategoryContext(city, listingSlug);
 
-  const subCat =
-    categories.find((c) => c.slug === cleanThirdSlug || c.slug === listingSlug) ||
-    unslugifyCategory(listingSlug, categories).categoryObj;
-
-  if (subCat) {
-    const cityName = loc ? loc.name : unslugifyCity(city).cityName;
-    const title = `${subCat.name} in ${cityName}${pageSuffix} — Buy, Sell & Verified Ads | Classifieds V2`;
-    const description = `Browse verified ${subCat.name} classified ads in ${cityName}${pageSuffix}. Compare prices, view real photos, and contact local sellers directly.`;
+  if (matchedSubCat) {
+    const title = `${matchedSubCat.name} in ${cityName}${pageSuffix} — Buy, Sell & Verified Ads | Classifieds V2`;
+    const description = `Browse verified ${matchedSubCat.name} classified ads in ${cityName}${pageSuffix}. Compare prices, view real photos, and contact local sellers directly.`;
 
     return {
       title,
@@ -105,10 +132,10 @@ export default async function ListingHierarchicalPage({ params, searchParams }: 
     if (typeof v === 'string') cleanQuery[k] = v;
   }
 
-  const { itemId, cleanSlug: cleanThirdSlug } = stripChillySuffixes(listingSlug);
+  const { itemId } = stripChillySuffixes(listingSlug);
 
   if (itemId) {
-    const listing = await listingRepository.findById(itemId);
+    const listing = await getListingById(itemId);
     if (!listing || listing.status !== 'approved') {
       notFound();
     }
@@ -154,21 +181,11 @@ export default async function ListingHierarchicalPage({ params, searchParams }: 
     );
   }
 
-  const [categories, locations] = await Promise.all([
-    categoryRepository.findAll(),
-    locationRepository.findAll(),
-  ]);
-
-  const matchedSubCat =
-    categories.find((c) => c.slug === cleanThirdSlug || c.slug === listingSlug) ||
-    unslugifyCategory(listingSlug, categories).categoryObj;
+  const { cityName, matchedSubCat, parentCat } = await getSubcategoryContext(city, listingSlug);
 
   if (!matchedSubCat) {
     notFound();
   }
-
-  const { cityName } = unslugifyCity(city, locations);
-  const parentCat = categories.find((c) => c.id === matchedSubCat.parentId);
 
   const paginated = await listingService.getPaginatedPageListings({
     city: cityName !== 'All India' ? cityName : undefined,

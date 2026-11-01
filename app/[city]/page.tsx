@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { locationRepository } from '@/server/repositories/location.repository';
@@ -14,18 +15,29 @@ interface CityPageProps {
   searchParams?: Promise<Record<string, string | undefined>>;
 }
 
+const getCityPageContext = cache(async (cityParam: string) => {
+  const { cleanSlug } = stripChillySuffixes(cityParam);
+  const [locations, categories] = await Promise.all([
+    locationRepository.findAll(),
+    categoryRepository.findAll(),
+  ]);
+
+  const loc =
+    locations.find((l) => l.slug === cleanSlug || l.slug === cityParam) ?? null;
+  const cat =
+    categories.find((c) => c.slug === cleanSlug || c.slug === cityParam) ?? null;
+
+  return { cleanSlug, locations, loc, cat };
+});
+
 export async function generateMetadata({ params, searchParams }: CityPageProps): Promise<Metadata> {
   const { city } = await params;
   const resolvedSearch = searchParams ? await searchParams : {};
   const pageNum = Math.max(1, Number(resolvedSearch.page) || 1);
   const pageSuffix = pageNum > 1 ? ` (Page ${pageNum})` : '';
   const canonicalUrl = pageNum > 1 ? `/${city}?page=${pageNum}` : `/${city}`;
-  const { cleanSlug } = stripChillySuffixes(city);
 
-  const [loc, cat] = await Promise.all([
-    locationRepository.findBySlug(cleanSlug).then((r) => r || locationRepository.findBySlug(city)),
-    categoryRepository.findBySlug(cleanSlug).then((r) => r || categoryRepository.findBySlug(city)),
-  ]);
+  const { locations, loc, cat } = await getCityPageContext(city);
 
   if (!loc && cat) {
     const title = `${cat.name} in India${pageSuffix} — Buy, Sell & Best Deals | Classifieds V2`;
@@ -39,7 +51,7 @@ export async function generateMetadata({ params, searchParams }: CityPageProps):
     };
   }
 
-  const cityName = loc ? loc.name : unslugifyCity(city).cityName;
+  const cityName = loc ? loc.name : unslugifyCity(city, locations).cityName;
   const title = `Classified Ads in ${cityName}${pageSuffix} — Free Buy, Sell, Jobs & Services`;
   const description = `Browse free local classified ads in ${cityName}. Find second-hand cars, bikes, mobile phones, apartments for rent, electronics, jobs and services in ${cityName}.`;
 
@@ -70,13 +82,7 @@ export default async function CityPage({ params, searchParams }: CityPageProps) 
     if (typeof v === 'string') cleanQuery[k] = v;
   }
 
-  const { cleanSlug } = stripChillySuffixes(city);
-
-  const [locations, loc, cat] = await Promise.all([
-    locationRepository.findAll(),
-    locationRepository.findBySlug(cleanSlug).then((r) => r || locationRepository.findBySlug(city)),
-    categoryRepository.findBySlug(cleanSlug).then((r) => r || categoryRepository.findBySlug(city)),
-  ]);
+  const { cleanSlug, locations, loc, cat } = await getCityPageContext(city);
 
   const isSpecialCity = cleanSlug === 'all-india' || cleanSlug === 'india' || cleanSlug === 'all';
   if (!loc && !cat && !isSpecialCity) {

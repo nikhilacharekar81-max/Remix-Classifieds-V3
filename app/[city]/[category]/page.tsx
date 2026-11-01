@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { locationRepository } from '@/server/repositories/location.repository';
@@ -13,6 +14,37 @@ interface CategoryCityPageProps {
   searchParams?: Promise<Record<string, string | undefined>>;
 }
 
+const getCategoryCityContext = cache(async (cityParam: string, categoryParam: string) => {
+  const { cleanSlug: cleanCitySlug } = stripChillySuffixes(cityParam);
+  const { cleanSlug: cleanCatSlug } = stripChillySuffixes(categoryParam);
+
+  const [locations, allCategories] = await Promise.all([
+    locationRepository.findAll(),
+    categoryRepository.findAll(),
+  ]);
+
+  const loc =
+    locations.find((l) => l.slug === cleanCitySlug || l.slug === cityParam) ?? null;
+  const firstCat =
+    allCategories.find((c) => c.slug === cleanCitySlug || c.slug === cityParam) ?? null;
+  const secondCat =
+    allCategories.find((c) => c.slug === cleanCatSlug || c.slug === categoryParam) ?? null;
+
+  const resolvedFirstCat = firstCat || unslugifyCategory(cityParam, allCategories).categoryObj;
+  const resolvedSecondCat = secondCat || unslugifyCategory(categoryParam, allCategories).categoryObj;
+
+  return {
+    cleanCitySlug,
+    cleanCatSlug,
+    locations,
+    allCategories,
+    loc,
+    firstCat,
+    resolvedFirstCat,
+    resolvedSecondCat,
+  };
+});
+
 export async function generateMetadata({ params, searchParams }: CategoryCityPageProps): Promise<Metadata> {
   const { city, category } = await params;
   const resolvedSearch = searchParams ? await searchParams : {};
@@ -20,17 +52,8 @@ export async function generateMetadata({ params, searchParams }: CategoryCityPag
   const pageSuffix = pageNum > 1 ? ` (Page ${pageNum})` : '';
   const canonicalUrl = pageNum > 1 ? `/${city}/${category}?page=${pageNum}` : `/${city}/${category}`;
 
-  const { cleanSlug: cleanCitySlug } = stripChillySuffixes(city);
-  const { cleanSlug: cleanCatSlug } = stripChillySuffixes(category);
-
-  const [loc, firstCat, secondCat, allCategories] = await Promise.all([
-    locationRepository.findBySlug(cleanCitySlug).then((r) => r || locationRepository.findBySlug(city)),
-    categoryRepository.findBySlug(cleanCitySlug).then((r) => r || categoryRepository.findBySlug(city)),
-    categoryRepository.findBySlug(cleanCatSlug).then((r) => r || categoryRepository.findBySlug(category)),
-    categoryRepository.findAll(),
-  ]);
-
-  const resolvedSecondCat = secondCat || unslugifyCategory(category, allCategories).categoryObj;
+  const { cleanCatSlug, locations, loc, firstCat, resolvedSecondCat } =
+    await getCategoryCityContext(city, category);
 
   if (!loc && firstCat && resolvedSecondCat) {
     const title = `${resolvedSecondCat.name} (${firstCat.name}) in India${pageSuffix} — Buy, Sell & Best Deals | Classifieds V2`;
@@ -44,7 +67,7 @@ export async function generateMetadata({ params, searchParams }: CategoryCityPag
     };
   }
 
-  const cityName = loc ? loc.name : unslugifyCity(city).cityName;
+  const cityName = loc ? loc.name : unslugifyCity(city, locations).cityName;
   const categoryName = resolvedSecondCat
     ? resolvedSecondCat.name
     : cleanCatSlug.charAt(0).toUpperCase() + cleanCatSlug.slice(1);
@@ -79,19 +102,14 @@ export default async function CategoryCityPage({ params, searchParams }: Categor
     if (typeof v === 'string') cleanQuery[k] = v;
   }
 
-  const { cleanSlug: cleanCitySlug } = stripChillySuffixes(city);
-  const { cleanSlug: cleanCatSlug } = stripChillySuffixes(category);
-
-  const [locations, allCategories, loc, firstCat, secondCat] = await Promise.all([
-    locationRepository.findAll(),
-    categoryRepository.findAll(),
-    locationRepository.findBySlug(cleanCitySlug).then((r) => r || locationRepository.findBySlug(city)),
-    categoryRepository.findBySlug(cleanCitySlug).then((r) => r || categoryRepository.findBySlug(city)),
-    categoryRepository.findBySlug(cleanCatSlug).then((r) => r || categoryRepository.findBySlug(category)),
-  ]);
-
-  const resolvedFirstCat = firstCat || unslugifyCategory(city, allCategories).categoryObj;
-  const resolvedSecondCat = secondCat || unslugifyCategory(category, allCategories).categoryObj;
+  const {
+    cleanCitySlug,
+    cleanCatSlug,
+    locations,
+    loc,
+    resolvedFirstCat,
+    resolvedSecondCat,
+  } = await getCategoryCityContext(city, category);
 
   // Case 1: 2-segment All-India ParentCategory + Subcategory route (e.g. /services/home-services-repairs, /bikes/motorcycles)
   if (!loc && resolvedFirstCat && resolvedSecondCat) {

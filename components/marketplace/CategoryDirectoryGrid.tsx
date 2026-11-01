@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useMemo } from 'react';
+import Link from 'next/link';
 import {
   Wrench,
   Car,
@@ -380,7 +381,7 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
               >
                 <div>
                   {/* Category Header Card (Fiverr + Cloud Service Tile) */}
-                  <a
+                  <Link
                     href={catUrl}
                     className="p-4 border-b border-[#f1f3f4] bg-white hover:bg-[#f8f9fa] cursor-pointer transition-colors flex items-center justify-between gap-3"
                   >
@@ -404,7 +405,7 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
                     >
                       <ArrowUpRight className="w-3.5 h-3.5" />
                     </span>
-                  </a>
+                  </Link>
 
                   {/* Subcategories List */}
                   <div className="p-3 space-y-0.5">
@@ -424,7 +425,7 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
                         });
 
                         return (
-                          <a
+                          <Link
                             key={sub.id}
                             href={subUrl}
                             className={`px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center justify-between gap-2 transition-all cursor-pointer group/item ${
@@ -453,7 +454,7 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
                                 }`}
                               />
                             </div>
-                          </a>
+                          </Link>
                         );
                       })
                     )}
@@ -475,13 +476,13 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
                     </span>
                   )}
 
-                  <a
+                  <Link
                     href={catUrl}
                     className="text-[11px] font-semibold text-[#3c4043] hover:text-[#1dbf73] flex items-center gap-0.5 cursor-pointer ml-auto"
                   >
                     <span>Explore</span>
                     <ChevronRight className="w-3 h-3" />
-                  </a>
+                  </Link>
                 </div>
               </div>
             );

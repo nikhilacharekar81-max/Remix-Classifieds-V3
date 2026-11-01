@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter as useNextRouter, usePathname } from 'next/navigation';
 
 export interface RouteInfo {
   path: string;
@@ -8,6 +9,8 @@ export interface RouteInfo {
   search: string;
   query: Record<string, string>;
 }
+
+let activeNextRouter: ReturnType<typeof useNextRouter> | null = null;
 
 export function parsePath(rawPathAndSearch?: string): { path: string; query: Record<string, string> } {
   let raw = rawPathAndSearch;
@@ -49,54 +52,98 @@ export function navigateTo(targetUrl: string) {
     cleanUrl = '/' + cleanUrl;
   }
 
-  // Perform full browser HTTP request for normal page navigation (PHP-style multi-page behavior)
   const isAdminInternal =
     window.location.pathname.startsWith('/admin') && cleanUrl.startsWith('/admin');
-  if (!isAdminInternal) {
-    window.location.href = cleanUrl;
+  if (isAdminInternal) {
+    const currentFull = window.location.pathname + window.location.search;
+    if (currentFull !== cleanUrl) {
+      window.history.pushState({}, '', cleanUrl);
+    }
+    window.dispatchEvent(new PopStateEvent('popstate'));
     return;
   }
 
-  const currentFull = window.location.pathname + window.location.search;
-  if (currentFull !== cleanUrl) {
-    window.history.pushState({}, '', cleanUrl);
+  if (activeNextRouter) {
+    activeNextRouter.push(cleanUrl);
+  } else {
+    window.location.href = cleanUrl;
   }
-  window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
 export function useRouter(initialPath?: string, initialQuery?: Record<string, string>) {
-  const [currentUrl, setCurrentUrl] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return window.location.pathname + window.location.search;
-    }
-    const base = initialPath || '/';
-    if (initialQuery && Object.keys(initialQuery).length > 0 && !base.includes('?')) {
-      const qs = new URLSearchParams(
-        Object.entries(initialQuery).filter(([_, v]) => v !== undefined && v !== '')
-      ).toString();
-      return qs ? `${base}?${qs}` : base;
-    }
-    return base;
-  });
+  const nextRouter = useNextRouter();
+  const nextPathname = usePathname();
+
+  useEffect(() => {
+    activeNextRouter = nextRouter;
+  }, [nextRouter]);
+
+  const [clientLocation, setClientLocation] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const handleLocationChange = () => {
-      setCurrentUrl(window.location.pathname + window.location.search);
+      setClientLocation(window.location.pathname + window.location.search);
     };
 
+    handleLocationChange();
     window.addEventListener('popstate', handleLocationChange);
     return () => {
       window.removeEventListener('popstate', handleLocationChange);
     };
-  }, []);
+  }, [nextPathname, initialPath]);
 
-  const { path, query } = parsePath(currentUrl);
+  const basePath = initialPath || nextPathname || '/';
+  const isAdminRoute = basePath.startsWith('/admin');
 
-  const navigate = useCallback((url: string) => {
-    navigateTo(url);
-  }, []);
+  const { path, query } = useMemo(() => {
+    if (isAdminRoute && clientLocation && clientLocation.startsWith('/admin')) {
+      return parsePath(clientLocation);
+    }
+
+    const resolvedPath = parsePath(basePath).path;
+    if (initialQuery !== undefined) {
+      return { path: resolvedPath, query: initialQuery };
+    }
+
+    if (clientLocation) {
+      const parsedClient = parsePath(clientLocation);
+      if (parsedClient.path === resolvedPath) {
+        return { path: resolvedPath, query: parsedClient.query };
+      }
+    }
+
+    return parsePath(basePath);
+  }, [isAdminRoute, clientLocation, basePath, initialQuery]);
+
+  const navigate = useCallback(
+    (url: string) => {
+      let cleanUrl = url;
+      if (cleanUrl.startsWith('#')) {
+        cleanUrl = cleanUrl.replace(/^#\/?/, '/');
+      }
+      if (!cleanUrl.startsWith('/')) {
+        cleanUrl = '/' + cleanUrl;
+      }
+
+      if (
+        typeof window !== 'undefined' &&
+        window.location.pathname.startsWith('/admin') &&
+        cleanUrl.startsWith('/admin')
+      ) {
+        const currentFull = window.location.pathname + window.location.search;
+        if (currentFull !== cleanUrl) {
+          window.history.pushState({}, '', cleanUrl);
+        }
+        window.dispatchEvent(new PopStateEvent('popstate'));
+        return;
+      }
+
+      nextRouter.push(cleanUrl);
+    },
+    [nextRouter]
+  );
 
   return {
     path,

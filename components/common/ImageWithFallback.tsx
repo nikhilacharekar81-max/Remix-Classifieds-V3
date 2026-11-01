@@ -75,9 +75,9 @@ export const ImageWithFallback: React.FC<ImageWithFallbackProps> = ({
   className = '',
   style
 }) => {
-  const [error, setError] = useState(false);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-  if (error || !src) {
+  if (!src || failedSrc === src) {
     // Determine the fallback style
     const fallback = CATEGORY_FALLBACKS[categoryId] || {
       icon: ImageOff,
@@ -107,7 +107,7 @@ export const ImageWithFallback: React.FC<ImageWithFallbackProps> = ({
       src={src}
       alt={alt}
       referrerPolicy="no-referrer"
-      onError={() => setError(true)}
+      onError={() => setFailedSrc(src)}
       className={className}
       style={style}
     />

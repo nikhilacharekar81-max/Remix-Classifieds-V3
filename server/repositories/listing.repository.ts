@@ -84,32 +84,32 @@ export class ListingRepository {
 
   public async findById(id: string): Promise<Listing | null> {
     try {
+      await ensureDatabaseSeeded();
       const cleanId = id.trim();
+      const digitsMatch = cleanId.match(/^lst_(\d+)$/i);
+
+      if (digitsMatch) {
+        const suffix = `_${digitsMatch[1]}`;
+        const rows = await db
+          .select()
+          .from(schema.listings)
+          .where(
+            or(
+              eq(schema.listings.id, cleanId),
+              sql`${schema.listings.id} LIKE ${'%' + suffix}`
+            )
+          )
+          .limit(1);
+        return rows.length > 0 ? this.mapRowToListing(rows[0]) : null;
+      }
+
       const rows = await db
         .select()
         .from(schema.listings)
         .where(eq(schema.listings.id, cleanId))
         .limit(1);
 
-      if (rows.length > 0) {
-        return this.mapRowToListing(rows[0]);
-      }
-
-      // Short ID resolution for canonical short URLs (e.g. lst_2041 matching lst_seeded_cat_mobiles_2041)
-      const digitsMatch = cleanId.match(/^lst_(\d+)$/i);
-      if (digitsMatch) {
-        const suffix = `_${digitsMatch[1]}`;
-        const fallbackRows = await db
-          .select()
-          .from(schema.listings)
-          .where(sql`${schema.listings.id} LIKE ${'%' + suffix}`)
-          .limit(1);
-        if (fallbackRows.length > 0) {
-          return this.mapRowToListing(fallbackRows[0]);
-        }
-      }
-
-      return null;
+      return rows.length > 0 ? this.mapRowToListing(rows[0]) : null;
     } catch (error) {
       console.error(`ListingRepository.findById error for ${id}:`, error);
       throw new Error(`Failed to find listing with id ${id}`, { cause: error });
@@ -279,13 +279,6 @@ export class ListingRepository {
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-      // Execute Count with identical whereClause
-      const countRes = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(schema.listings)
-        .where(whereClause);
-      const total = countRes[0]?.count || 0;
-
       // Deterministic ordering: Boosted -> Featured -> Requested sort -> Tie-breaker by ID
       const boostOrder = sql`CASE WHEN ${schema.listings.boostStatus} = 'active' AND ${schema.listings.boostExpiresAt} > NOW() THEN 1 ELSE 0 END DESC`;
       const featuredOrder = sql`CASE WHEN ${schema.listings.isFeatured} = true AND (${schema.listings.featuredUntil} IS NULL OR ${schema.listings.featuredUntil} > NOW()) THEN 1 ELSE 0 END DESC`;
@@ -320,7 +313,15 @@ export class ListingRepository {
         query.offset(offsetVal);
       }
 
-      const rows = await query;
+      const [countRes, rows] = await Promise.all([
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(schema.listings)
+          .where(whereClause),
+        query,
+      ]);
+
+      const total = countRes[0]?.count || 0;
       return {
         items: rows.map((r) => this.mapRowToListing(r)),
         total,

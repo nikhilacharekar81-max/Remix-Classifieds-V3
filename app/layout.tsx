@@ -5,7 +5,6 @@ import { ClientAppProvider } from '@/components/ClientAppProvider';
 import { categoryRepository } from '@/server/repositories/category.repository';
 import { locationRepository } from '@/server/repositories/location.repository';
 import { adminRepository } from '@/server/repositories/admin.repository';
-import { cmsRepository } from '@/server/repositories/cms.repository';
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -56,17 +55,15 @@ export default async function RootLayout({
 }) {
   let initialServerData = undefined;
   try {
-    const [categories, locations, settings, cmsPages] = await Promise.all([
+    const [categories, locations, settings] = await Promise.all([
       categoryRepository.findAll(),
       locationRepository.findAll(),
       adminRepository.getSystemSettings(),
-      cmsRepository.findAllPages(),
     ]);
     initialServerData = {
       categories,
       locations,
       settings,
-      cmsPages,
     };
   } catch (err) {
     console.error('RootLayout initial data fetch error:', err);
