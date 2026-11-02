@@ -3,6 +3,9 @@ import { unstable_cache, revalidateTag, revalidatePath } from 'next/cache';
 import { categoryRepository } from '@/server/repositories/category.repository';
 import { locationRepository } from '@/server/repositories/location.repository';
 import { adminRepository } from '@/server/repositories/admin.repository';
+import { db } from '@/src/db/index';
+import { cacheInvalidationOutbox } from '@/src/db/schema';
+import { eq, and, lte, sql } from 'drizzle-orm';
 import type { Category, LocationItem, SystemSettings } from '@/lib/types';
 
 export const REFERENCE_CACHE_TAGS = {
@@ -27,6 +30,115 @@ function tryHealInvalidationTag(tag: string): void {
     failedInvalidationTags.delete(tag);
   } catch (err) {
     console.error(`[ReferenceCache] Deferred revalidation retry failed for tag "${tag}":`, err);
+  }
+}
+
+/**
+ * Records or completes a durable cache invalidation entry in PostgreSQL.
+ * Deduplicated per tag so entries do not grow unbounded.
+ */
+export async function recordDurableInvalidation(tag: string, success: boolean, errMessage?: string): Promise<void> {
+  try {
+    const now = new Date();
+    const id = `outbox_${tag}`;
+
+    if (success) {
+      await db
+        .insert(cacheInvalidationOutbox)
+        .values({
+          id,
+          tag,
+          status: 'completed',
+          attempts: 1,
+          lastError: null,
+          nextRetryAt: now,
+          completedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: cacheInvalidationOutbox.tag,
+          set: {
+            status: 'completed',
+            lastError: null,
+            completedAt: now,
+          },
+        });
+    } else {
+      await db
+        .insert(cacheInvalidationOutbox)
+        .values({
+          id,
+          tag,
+          status: 'pending',
+          attempts: 1,
+          lastError: errMessage || 'Failed to revalidate cache tag',
+          nextRetryAt: new Date(Date.now() + 30000),
+        })
+        .onConflictDoUpdate({
+          target: cacheInvalidationOutbox.tag,
+          set: {
+            status: 'pending',
+            attempts: sql`${cacheInvalidationOutbox.attempts} + 1`,
+            lastError: errMessage || 'Failed to revalidate cache tag',
+            nextRetryAt: new Date(Date.now() + 30000),
+          },
+        });
+    }
+  } catch (dbErr) {
+    console.error(`[ReferenceCache] Failed to record durable outbox entry for tag "${tag}":`, dbErr);
+  }
+}
+
+/**
+ * Processes any pending cache invalidations in PostgreSQL outbox that failed previously.
+ * Safe for concurrent server workers using optimistic status locking.
+ */
+export async function processPendingInvalidations(): Promise<void> {
+  try {
+    const now = new Date();
+    const pending = await db
+      .select()
+      .from(cacheInvalidationOutbox)
+      .where(and(eq(cacheInvalidationOutbox.status, 'pending'), lte(cacheInvalidationOutbox.nextRetryAt, now)))
+      .limit(5);
+
+    for (const entry of pending) {
+      // Atomic lock: update status to 'processing' so concurrent workers do not duplicate work
+      const lockResult = await db
+        .update(cacheInvalidationOutbox)
+        .set({ status: 'processing' })
+        .where(and(eq(cacheInvalidationOutbox.id, entry.id), eq(cacheInvalidationOutbox.status, 'pending')))
+        .returning({ id: cacheInvalidationOutbox.id });
+
+      if (lockResult.length === 0) continue; // Another worker claimed it
+
+      try {
+        revalidateTag(entry.tag);
+        failedInvalidationTags.delete(entry.tag);
+        await db
+          .update(cacheInvalidationOutbox)
+          .set({
+            status: 'completed',
+            lastError: null,
+            completedAt: new Date(),
+          })
+          .where(eq(cacheInvalidationOutbox.id, entry.id));
+      } catch (err: any) {
+        const nextAttempts = entry.attempts + 1;
+        const backoffMs = Math.min(300000, Math.pow(2, Math.min(nextAttempts, 6)) * 5000);
+        failedInvalidationTags.add(entry.tag);
+        await db
+          .update(cacheInvalidationOutbox)
+          .set({
+            status: 'pending',
+            attempts: nextAttempts,
+            lastError: String(err?.message || err),
+            nextRetryAt: new Date(Date.now() + backoffMs),
+          })
+          .where(eq(cacheInvalidationOutbox.id, entry.id));
+      }
+    }
+  } catch (err) {
+    console.error('[ReferenceCache] Failed to process pending invalidation outbox:', err);
   }
 }
 
@@ -74,7 +186,7 @@ const fetchCachedLiveListingCountsInternal = unstable_cache(
   ['marketplace-reference-live-listing-counts-v1'],
   {
     tags: [REFERENCE_CACHE_TAGS.LISTING_COUNTS],
-    revalidate: false,
+    revalidate: 300, // 5 minutes bounded freshness fallback for natural listing expirations
   }
 );
 
@@ -101,6 +213,9 @@ export const getCachedCategoryHierarchy = cache(async (): Promise<Category[]> =>
  * Deduplicated per-request via React `cache()` and shared across requests via Next.js `unstable_cache`.
  */
 export const getCachedLiveListingCounts = cache(async () => {
+  // Fire background check for durable outbox entries from prior workers/restarts
+  processPendingInvalidations().catch(() => {});
+
   if (failedInvalidationTags.has(REFERENCE_CACHE_TAGS.LISTING_COUNTS)) {
     tryHealInvalidationTag(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
     return categoryRepository.findLiveListingCounts();
@@ -230,22 +345,33 @@ export function invalidateSettingsReferenceCache(): void {
 }
 
 /**
- * Invalidates cached live listing counts data.
+ * Invalidates cached live listing counts data and records durable status in PostgreSQL outbox.
  * Must be called whenever listings are created, updated, status-changed, or deleted.
  */
-export function invalidateLiveListingCountsCache(): void {
+export async function invalidateLiveListingCountsCache(): Promise<void> {
+  let success = false;
+  let errStr: string | undefined = undefined;
+
   try {
     revalidateTag(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
     failedInvalidationTags.delete(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
-  } catch (error) {
+    success = true;
+  } catch (error: any) {
     console.error(`[ReferenceCache] Failed to revalidate tag "${REFERENCE_CACHE_TAGS.LISTING_COUNTS}":`, error);
     failedInvalidationTags.add(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
+    errStr = String(error?.message || error);
   }
 
   try {
     revalidatePath('/', 'layout');
   } catch (error) {
     console.error('[ReferenceCache] Failed to revalidate root layout path after listing count mutation:', error);
+  }
+
+  try {
+    await recordDurableInvalidation(REFERENCE_CACHE_TAGS.LISTING_COUNTS, success, errStr);
+  } catch (outboxErr) {
+    console.error('[ReferenceCache] Error recording outbox invalidation:', outboxErr);
   }
 }
 

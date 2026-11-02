@@ -1,6 +1,7 @@
 import { moderationRepository } from '@/server/repositories/moderation.repository';
 import { listingRepository } from '@/server/repositories/listing.repository';
 import { adminRepository } from '@/server/repositories/admin.repository';
+import { invalidateLiveListingCountsCache } from '@/server/cache/reference-data.cache';
 import { ReportItem, ModerationRule } from '@/lib/types';
 
 export class ModerationService {
@@ -43,10 +44,13 @@ export class ModerationService {
     if (!success) return false;
 
     if (actionType === 'actioned' && targetListingId) {
-      await listingRepository.update(targetListingId, {
+      const updatedListing = await listingRepository.update(targetListingId, {
         status: 'rejected',
         rejectionReason: `Actioned report: ${actionNote}`,
       });
+      if (updatedListing) {
+        await invalidateLiveListingCountsCache();
+      }
     }
 
     await adminRepository.createAuditLog({

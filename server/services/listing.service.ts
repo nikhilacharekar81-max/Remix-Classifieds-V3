@@ -179,21 +179,31 @@ export class ListingService {
         expiresAt,
       });
 
-      // Record audit log for listing creation with actor metadata and client IP address
-      if (sellerId) {
-        await adminRepository.createAuditLog({
-          adminId: sellerId,
-          adminName: actorMeta?.name || data.sellerName || 'Authenticated User',
-          action: actorMeta?.isAdminAction ? 'ADMIN_LISTING_CREATED' : 'USER_LISTING_CREATED',
-          module: 'Marketplace',
-          targetId: id,
-          targetSummary: created.title,
-          details: `Created listing in ${created.location.city}`,
-          ipAddress: actorMeta?.ipAddress || 'unknown',
-        });
+      // 1. Immediately trigger listing count invalidation right after successful database insert
+      try {
+        await invalidateLiveListingCountsCache();
+      } catch (invalidationErr) {
+        console.error('[ListingService] Cache invalidation warning in createListing:', invalidationErr);
       }
 
-      invalidateLiveListingCountsCache();
+      // 2. Record audit log without allowing audit failure to disrupt creation response
+      if (sellerId) {
+        try {
+          await adminRepository.createAuditLog({
+            adminId: sellerId,
+            adminName: actorMeta?.name || data.sellerName || 'Authenticated User',
+            action: actorMeta?.isAdminAction ? 'ADMIN_LISTING_CREATED' : 'USER_LISTING_CREATED',
+            module: 'Marketplace',
+            targetId: id,
+            targetSummary: created.title,
+            details: `Created listing in ${created.location.city}`,
+            ipAddress: actorMeta?.ipAddress || 'unknown',
+          });
+        } catch (auditErr) {
+          console.error('[ListingService] Audit log warning in createListing:', auditErr);
+        }
+      }
+
       return { success: true, listing: created, status: 201 };
     } catch (err: any) {
       console.error('ListingService.createListing error:', err);

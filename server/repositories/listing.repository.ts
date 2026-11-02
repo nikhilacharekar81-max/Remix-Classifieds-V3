@@ -1,4 +1,4 @@
-import { db } from '@/src/db/index';
+import { db, withDbRetry } from '@/src/db/index';
 import * as schema from '@/src/db/schema';
 import { eq, and, notInArray, sql, desc, asc, or, ilike, gte, lte, inArray } from 'drizzle-orm';
 import { Listing } from '@/lib/types';
@@ -90,24 +90,28 @@ export class ListingRepository {
 
       if (digitsMatch) {
         const suffix = `_${digitsMatch[1]}`;
-        const rows = await db
-          .select()
-          .from(schema.listings)
-          .where(
-            or(
-              eq(schema.listings.id, cleanId),
-              sql`${schema.listings.id} LIKE ${'%' + suffix}`
+        const rows = await withDbRetry(() =>
+          db
+            .select()
+            .from(schema.listings)
+            .where(
+              or(
+                eq(schema.listings.id, cleanId),
+                sql`${schema.listings.id} LIKE ${'%' + suffix}`
+              )
             )
-          )
-          .limit(1);
+            .limit(1)
+        );
         return rows.length > 0 ? this.mapRowToListing(rows[0]) : null;
       }
 
-      const rows = await db
-        .select()
-        .from(schema.listings)
-        .where(eq(schema.listings.id, cleanId))
-        .limit(1);
+      const rows = await withDbRetry(() =>
+        db
+          .select()
+          .from(schema.listings)
+          .where(eq(schema.listings.id, cleanId))
+          .limit(1)
+      );
 
       return rows.length > 0 ? this.mapRowToListing(rows[0]) : null;
     } catch (error) {
@@ -313,13 +317,15 @@ export class ListingRepository {
         query.offset(offsetVal);
       }
 
-      const [countRes, rows] = await Promise.all([
-        db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(schema.listings)
-          .where(whereClause),
-        query,
-      ]);
+      const [countRes, rows] = await withDbRetry(() =>
+        Promise.all([
+          db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(schema.listings)
+            .where(whereClause),
+          query,
+        ])
+      );
 
       const total = countRes[0]?.count || 0;
       return {
