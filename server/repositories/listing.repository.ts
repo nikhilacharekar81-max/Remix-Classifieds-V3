@@ -3,7 +3,22 @@ import * as schema from '@/src/db/schema';
 import { eq, and, notInArray, sql, desc, asc, or, ilike, gte, lte, inArray } from 'drizzle-orm';
 import { Listing } from '@/lib/types';
 import { normalizeAdTitle, DUPLICATE_TITLE_ERROR_MESSAGE } from '@/lib/utils/adTitleValidation';
-import { getCachedCategoryHierarchy } from '@/server/cache/reference-data.cache';
+import {
+  getCachedCategoryHierarchy,
+  enqueueDurableInvalidation,
+  REFERENCE_CACHE_TAGS,
+} from '@/server/cache/reference-data.cache';
+
+export function doesListingUpdateAffectCounts(
+  fields: Partial<typeof schema.listings.$inferInsert>
+): boolean {
+  return (
+    fields.status !== undefined ||
+    fields.categoryId !== undefined ||
+    fields.subcategoryId !== undefined ||
+    fields.expiresAt !== undefined
+  );
+}
 
 export interface ListingFilterQuery {
   city?: string;
