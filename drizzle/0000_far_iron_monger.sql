@@ -336,6 +336,18 @@ CREATE TABLE "users" (
 	CONSTRAINT "users_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
+CREATE TABLE "cache_invalidation_outbox" (
+	"id" varchar(64) PRIMARY KEY NOT NULL,
+	"tag" varchar(128) NOT NULL,
+	"status" varchar(32) DEFAULT 'pending' NOT NULL,
+	"attempts" integer DEFAULT 0 NOT NULL,
+	"last_error" text,
+	"next_retry_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"completed_at" timestamp with time zone,
+	CONSTRAINT "cache_invalidation_outbox_tag_unique" UNIQUE("tag")
+);
+--> statement-breakpoint
 ALTER TABLE "abuse_reports" ADD CONSTRAINT "abuse_reports_reported_by_users_id_fk" FOREIGN KEY ("reported_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "boost_orders" ADD CONSTRAINT "boost_orders_listing_id_listings_id_fk" FOREIGN KEY ("listing_id") REFERENCES "public"."listings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "boost_orders" ADD CONSTRAINT "boost_orders_package_id_boost_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."boost_packages"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -357,4 +369,5 @@ ALTER TABLE "user_sessions" ADD CONSTRAINT "user_sessions_user_id_users_id_fk" F
 CREATE UNIQUE INDEX "idx_unique_active_ad_title_per_seller" ON "listings" USING btree ("seller_id",LOWER(REGEXP_REPLACE(TRIM("title"), '\s+', ' ', 'g'))) WHERE "listings"."status" NOT IN ('sold', 'expired');--> statement-breakpoint
 CREATE INDEX "idx_listings_boost_ranking" ON "listings" USING btree ("boost_status","boost_expires_at","is_featured","created_at");--> statement-breakpoint
 CREATE INDEX "idx_listings_location_cat" ON "listings" USING btree ("city","category_id","status");--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_webhook_gateway_event_unique" ON "payment_webhook_events" USING btree ("gateway","id");
+CREATE UNIQUE INDEX "idx_webhook_gateway_event_unique" ON "payment_webhook_events" USING btree ("gateway","id");--> statement-breakpoint
+CREATE INDEX "idx_cache_invalidation_outbox_status_retry" ON "cache_invalidation_outbox" USING btree ("status","next_retry_at");

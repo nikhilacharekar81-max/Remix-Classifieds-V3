@@ -373,31 +373,36 @@ export class ListingRepository {
     try {
       const exp = data.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-      const inserted = await db
-        .insert(schema.listings)
-        .values({
-          id: data.id,
-          sellerId: data.sellerId,
-          sellerName: data.sellerName,
-          sellerPhone: data.sellerPhone,
-          categoryId: data.categoryId,
-          subcategoryId: data.subcategoryId || null,
-          title: data.title,
-          description: data.description,
-          price: String(data.price),
-          state: data.state,
-          city: data.city,
-          locality: data.locality,
-          latitude: data.latitude || null,
-          longitude: data.longitude || null,
-          images: data.images || [],
-          customAttributes: data.customAttributes || {},
-          status: data.status || 'pending',
-          expiresAt: exp,
-        })
-        .returning();
+      const insertedRow = await db.transaction(async (tx) => {
+        const inserted = await tx
+          .insert(schema.listings)
+          .values({
+            id: data.id,
+            sellerId: data.sellerId,
+            sellerName: data.sellerName,
+            sellerPhone: data.sellerPhone,
+            categoryId: data.categoryId,
+            subcategoryId: data.subcategoryId || null,
+            title: data.title,
+            description: data.description,
+            price: String(data.price),
+            state: data.state,
+            city: data.city,
+            locality: data.locality,
+            latitude: data.latitude || null,
+            longitude: data.longitude || null,
+            images: data.images || [],
+            customAttributes: data.customAttributes || {},
+            status: data.status || 'pending',
+            expiresAt: exp,
+          })
+          .returning();
 
-      return this.mapRowToListing(inserted[0]);
+        await enqueueDurableInvalidation(REFERENCE_CACHE_TAGS.LISTING_COUNTS, tx);
+        return inserted[0];
+      });
+
+      return this.mapRowToListing(insertedRow);
     } catch (error) {
       console.error('ListingRepository.create error:', error);
       throw new Error('Failed to create listing in PostgreSQL', { cause: error });
@@ -406,6 +411,25 @@ export class ListingRepository {
 
   public async update(id: string, fields: Partial<typeof schema.listings.$inferInsert>): Promise<Listing | null> {
     try {
+      if (doesListingUpdateAffectCounts(fields)) {
+        const updatedRow = await db.transaction(async (tx) => {
+          const updated = await tx
+            .update(schema.listings)
+            .set({
+              ...fields,
+              updatedAt: new Date(),
+            })
+            .where(eq(schema.listings.id, id))
+            .returning();
+
+          if (!updated.length) return null;
+          await enqueueDurableInvalidation(REFERENCE_CACHE_TAGS.LISTING_COUNTS, tx);
+          return updated[0];
+        });
+
+        return updatedRow ? this.mapRowToListing(updatedRow) : null;
+      }
+
       const updated = await db
         .update(schema.listings)
         .set({
@@ -425,8 +449,17 @@ export class ListingRepository {
 
   public async delete(id: string): Promise<boolean> {
     try {
-      const res = await db.delete(schema.listings).where(eq(schema.listings.id, id)).returning({ id: schema.listings.id });
-      return res.length > 0;
+      return await db.transaction(async (tx) => {
+        const res = await tx
+          .delete(schema.listings)
+          .where(eq(schema.listings.id, id))
+          .returning({ id: schema.listings.id });
+
+        if (res.length > 0) {
+          await enqueueDurableInvalidation(REFERENCE_CACHE_TAGS.LISTING_COUNTS, tx);
+        }
+        return res.length > 0;
+      });
     } catch (error) {
       console.error(`ListingRepository.delete error for ${id}:`, error);
       throw new Error(`Failed to delete listing ${id}`, { cause: error });
@@ -447,17 +480,22 @@ export class ListingRepository {
 
   public async bulkUpdateStatus(ids: string[], status: string, rejectionReason?: string): Promise<{ updatedCount: number }> {
     try {
-      const res = await db
-        .update(schema.listings)
-        .set({
-          status,
-          rejectionReason: rejectionReason || null,
-          updatedAt: new Date(),
-        })
-        .where(inArray(schema.listings.id, ids))
-        .returning({ id: schema.listings.id });
+      return await db.transaction(async (tx) => {
+        const res = await tx
+          .update(schema.listings)
+          .set({
+            status,
+            rejectionReason: rejectionReason || null,
+            updatedAt: new Date(),
+          })
+          .where(inArray(schema.listings.id, ids))
+          .returning({ id: schema.listings.id });
 
-      return { updatedCount: res.length };
+        if (res.length > 0) {
+          await enqueueDurableInvalidation(REFERENCE_CACHE_TAGS.LISTING_COUNTS, tx);
+        }
+        return { updatedCount: res.length };
+      });
     } catch (error) {
       console.error('ListingRepository.bulkUpdateStatus error:', error);
       throw new Error('Bulk update failed in PostgreSQL', { cause: error });
@@ -466,12 +504,17 @@ export class ListingRepository {
 
   public async bulkDelete(ids: string[]): Promise<{ deletedCount: number }> {
     try {
-      const res = await db
-        .delete(schema.listings)
-        .where(inArray(schema.listings.id, ids))
-        .returning({ id: schema.listings.id });
+      return await db.transaction(async (tx) => {
+        const res = await tx
+          .delete(schema.listings)
+          .where(inArray(schema.listings.id, ids))
+          .returning({ id: schema.listings.id });
 
-      return { deletedCount: res.length };
+        if (res.length > 0) {
+          await enqueueDurableInvalidation(REFERENCE_CACHE_TAGS.LISTING_COUNTS, tx);
+        }
+        return { deletedCount: res.length };
+      });
     } catch (error) {
       console.error('ListingRepository.bulkDelete error:', error);
       throw new Error('Bulk delete failed in PostgreSQL', { cause: error });
@@ -482,17 +525,22 @@ export class ListingRepository {
     try {
       const validDays = !isNaN(Number(days)) && Number(days) > 0 ? Number(days) : 30;
       const newExpiry = new Date(Date.now() + validDays * 24 * 60 * 60 * 1000);
-      const res = await db
-        .update(schema.listings)
-        .set({
-          status: 'approved',
-          expiresAt: newExpiry,
-          updatedAt: new Date(),
-        })
-        .where(inArray(schema.listings.id, ids))
-        .returning({ id: schema.listings.id });
+      return await db.transaction(async (tx) => {
+        const res = await tx
+          .update(schema.listings)
+          .set({
+            status: 'approved',
+            expiresAt: newExpiry,
+            updatedAt: new Date(),
+          })
+          .where(inArray(schema.listings.id, ids))
+          .returning({ id: schema.listings.id });
 
-      return { renewedCount: res.length };
+        if (res.length > 0) {
+          await enqueueDurableInvalidation(REFERENCE_CACHE_TAGS.LISTING_COUNTS, tx);
+        }
+        return { renewedCount: res.length };
+      });
     } catch (error) {
       console.error('ListingRepository.bulkRenew error:', error);
       throw new Error('Bulk renewal failed in PostgreSQL', { cause: error });
@@ -501,3 +549,4 @@ export class ListingRepository {
 }
 
 export const listingRepository = new ListingRepository();
+

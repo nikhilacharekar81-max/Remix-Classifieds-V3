@@ -5,8 +5,18 @@ import { locationRepository } from '@/server/repositories/location.repository';
 import { adminRepository } from '@/server/repositories/admin.repository';
 import { db, withDbRetry } from '@/src/db/index';
 import { cacheInvalidationOutbox } from '@/src/db/schema';
-import { eq, and, lte, sql } from 'drizzle-orm';
+import { eq, and, lte, inArray, sql } from 'drizzle-orm';
 import type { Category, LocationItem, SystemSettings } from '@/lib/types';
+
+export type DbExecutor = Pick<typeof db, 'insert' | 'update' | 'select' | 'delete'>;
+
+declare global {
+  var _outboxRetryWorkerTimer: ReturnType<typeof setInterval> | undefined;
+  var _outboxRetryWorkerRunning: boolean | undefined;
+}
+
+const PROCESSING_LEASE_MS = 60_000;
+const OUTBOX_WORKER_INTERVAL_MS = 30_000;
 
 export const REFERENCE_CACHE_TAGS = {
   CATEGORIES: 'marketplace-categories',
@@ -34,17 +44,68 @@ function tryHealInvalidationTag(tag: string): void {
 }
 
 /**
+ * Enqueues a durable 'pending' cache invalidation outbox entry in PostgreSQL.
+ * When called with a transaction executor `tx`, uses the exact same transaction connection
+ * and propagates errors so the listing mutation and outbox record commit or roll back atomically.
+ */
+export async function enqueueDurableInvalidation(
+  tag: string = REFERENCE_CACHE_TAGS.LISTING_COUNTS,
+  tx?: DbExecutor
+): Promise<void> {
+  const now = new Date();
+  const id = `outbox_${tag}`;
+  const executor = tx ?? db;
+
+  const performUpsert = () =>
+    executor
+      .insert(cacheInvalidationOutbox)
+      .values({
+        id,
+        tag,
+        status: 'pending',
+        attempts: 0,
+        lastError: null,
+        nextRetryAt: now,
+        completedAt: null,
+      })
+      .onConflictDoUpdate({
+        target: cacheInvalidationOutbox.tag,
+        set: {
+          status: 'pending',
+          attempts: 0,
+          lastError: null,
+          nextRetryAt: now,
+          completedAt: null,
+        },
+      });
+
+  if (tx) {
+    await performUpsert();
+  } else {
+    await withDbRetry(performUpsert);
+  }
+
+  ensureOutboxRetryWorkerStarted();
+}
+
+/**
  * Records or completes a durable cache invalidation entry in PostgreSQL.
  * Deduplicated per tag so entries do not grow unbounded.
  */
-export async function recordDurableInvalidation(tag: string, success: boolean, errMessage?: string): Promise<void> {
+export async function recordDurableInvalidation(
+  tag: string,
+  success: boolean,
+  errMessage?: string,
+  tx?: DbExecutor
+): Promise<void> {
   try {
     const now = new Date();
     const id = `outbox_${tag}`;
+    const executor = tx ?? db;
 
-    await withDbRetry(() => {
+    const performRecord = () => {
       if (success) {
-        return db
+        return executor
           .insert(cacheInvalidationOutbox)
           .values({
             id,
@@ -64,7 +125,7 @@ export async function recordDurableInvalidation(tag: string, success: boolean, e
             },
           });
       } else {
-        return db
+        return executor
           .insert(cacheInvalidationOutbox)
           .values({
             id,
@@ -84,38 +145,83 @@ export async function recordDurableInvalidation(tag: string, success: boolean, e
             },
           });
       }
-    });
+    };
+
+    if (tx) {
+      await performRecord();
+    } else {
+      await withDbRetry(performRecord);
+    }
+
+    if (!success) {
+      ensureOutboxRetryWorkerStarted();
+    }
   } catch (dbErr) {
     console.error(`[ReferenceCache] Failed to record durable outbox entry for tag "${tag}":`, dbErr);
+    if (tx) {
+      throw dbErr;
+    }
   }
 }
 
 /**
- * Processes any pending cache invalidations in PostgreSQL outbox that failed previously.
- * Safe for concurrent server workers using optimistic status locking.
+ * Processes pending and stale-leased 'processing' cache invalidations in PostgreSQL outbox.
+ * Safe against concurrent workers via atomic conditional claim with a bounded processing lease.
  */
 export async function processPendingInvalidations(): Promise<void> {
+  if (globalThis._outboxRetryWorkerRunning) return;
+  globalThis._outboxRetryWorkerRunning = true;
+
   try {
     const now = new Date();
-    const pending = await withDbRetry(() =>
+    const eligible = await withDbRetry(() =>
       db
         .select()
         .from(cacheInvalidationOutbox)
-        .where(and(eq(cacheInvalidationOutbox.status, 'pending'), lte(cacheInvalidationOutbox.nextRetryAt, now)))
+        .where(
+          and(
+            inArray(cacheInvalidationOutbox.status, ['pending', 'processing']),
+            lte(cacheInvalidationOutbox.nextRetryAt, now)
+          )
+        )
         .limit(5)
     );
 
-    for (const entry of pending) {
-      // Atomic lock: update status to 'processing' so concurrent workers do not duplicate work
+    for (const entry of eligible) {
+      const claimNow = new Date();
+      const leaseUntil = new Date(claimNow.getTime() + PROCESSING_LEASE_MS);
+      const wasStaleProcessing = entry.status === 'processing';
+
+      // Atomic claim + lease assignment: ensures concurrent workers cannot claim the same entry
+      // and a crashed 'processing' worker's entry becomes reclaimable only after leaseUntil expires.
       const lockResult = await withDbRetry(() =>
         db
           .update(cacheInvalidationOutbox)
-          .set({ status: 'processing' })
-          .where(and(eq(cacheInvalidationOutbox.id, entry.id), eq(cacheInvalidationOutbox.status, 'pending')))
-          .returning({ id: cacheInvalidationOutbox.id })
+          .set({
+            status: 'processing',
+            nextRetryAt: leaseUntil,
+            ...(wasStaleProcessing
+              ? {
+                  attempts: sql`${cacheInvalidationOutbox.attempts} + 1`,
+                  lastError: entry.lastError || 'Reclaimed stale processing outbox entry after lease expiry',
+                }
+              : {}),
+          })
+          .where(
+            and(
+              eq(cacheInvalidationOutbox.id, entry.id),
+              eq(cacheInvalidationOutbox.status, entry.status),
+              lte(cacheInvalidationOutbox.nextRetryAt, claimNow)
+            )
+          )
+          .returning({
+            id: cacheInvalidationOutbox.id,
+            attempts: cacheInvalidationOutbox.attempts,
+          })
       );
 
-      if (lockResult.length === 0) continue; // Another worker claimed it
+      if (lockResult.length === 0) continue; // Another worker claimed or updated it
+      const currentAttempts = lockResult[0].attempts;
 
       try {
         revalidateTag(entry.tag);
@@ -128,10 +234,15 @@ export async function processPendingInvalidations(): Promise<void> {
               lastError: null,
               completedAt: new Date(),
             })
-            .where(eq(cacheInvalidationOutbox.id, entry.id))
+            .where(
+              and(
+                eq(cacheInvalidationOutbox.id, entry.id),
+                eq(cacheInvalidationOutbox.status, 'processing')
+              )
+            )
         );
       } catch (err: any) {
-        const nextAttempts = entry.attempts + 1;
+        const nextAttempts = currentAttempts + 1;
         const backoffMs = Math.min(300000, Math.pow(2, Math.min(nextAttempts, 6)) * 5000);
         failedInvalidationTags.add(entry.tag);
         await withDbRetry(() =>
@@ -143,14 +254,43 @@ export async function processPendingInvalidations(): Promise<void> {
               lastError: String(err?.message || err),
               nextRetryAt: new Date(Date.now() + backoffMs),
             })
-            .where(eq(cacheInvalidationOutbox.id, entry.id))
+            .where(
+              and(
+                eq(cacheInvalidationOutbox.id, entry.id),
+                eq(cacheInvalidationOutbox.status, 'processing')
+              )
+            )
         );
       }
     }
   } catch (err) {
     console.error('[ReferenceCache] Failed to process pending invalidation outbox:', err);
+  } finally {
+    globalThis._outboxRetryWorkerRunning = false;
   }
 }
+
+/**
+ * Starts a singleton periodic server-side outbox retry worker independent of cache reads.
+ * Guarded via globalThis so module reloads or requests never spawn duplicate timers.
+ */
+export function ensureOutboxRetryWorkerStarted(): void {
+  if (typeof setInterval === 'undefined' || globalThis._outboxRetryWorkerTimer) {
+    return;
+  }
+
+  const timer = setInterval(() => {
+    processPendingInvalidations().catch(() => {});
+  }, OUTBOX_WORKER_INTERVAL_MS);
+
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+
+  globalThis._outboxRetryWorkerTimer = timer;
+}
+
+ensureOutboxRetryWorkerStarted();
 
 const fetchCachedCategoryHierarchyInternal = unstable_cache(
   async (): Promise<Category[]> => {
@@ -227,7 +367,8 @@ export const getCachedCategoryHierarchy = cache(async (): Promise<Category[]> =>
  * Deduplicated per-request via React `cache()` and shared across requests via Next.js `unstable_cache`.
  */
 export const getCachedLiveListingCounts = cache(async () => {
-  // Throttle background outbox check to at most once every 60s to avoid extra DB queries on every request
+  ensureOutboxRetryWorkerStarted();
+  // Throttle opportunistic outbox check to at most once every 60s to avoid extra DB queries on every request
   const nowMs = Date.now();
   if (nowMs - lastOutboxCheckMs > 60000) {
     lastOutboxCheckMs = nowMs;

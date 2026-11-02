@@ -1,4 +1,8 @@
-import { listingRepository, ListingFilterQuery } from '@/server/repositories/listing.repository';
+import {
+  listingRepository,
+  ListingFilterQuery,
+  doesListingUpdateAffectCounts,
+} from '@/server/repositories/listing.repository';
 import { adminRepository } from '@/server/repositories/admin.repository';
 import { invalidateLiveListingCountsCache } from '@/server/cache/reference-data.cache';
 import { Listing } from '@/lib/types';
@@ -251,6 +255,8 @@ export class ListingService {
     if (updatedData.title !== undefined) safeFields.title = updatedData.title;
     if (updatedData.description !== undefined) safeFields.description = updatedData.description;
     if (updatedData.price !== undefined) safeFields.price = String(updatedData.price);
+    if (updatedData.categoryId !== undefined) safeFields.categoryId = updatedData.categoryId;
+    if (updatedData.subcategoryId !== undefined) safeFields.subcategoryId = updatedData.subcategoryId || null;
     if (updatedData.images !== undefined) safeFields.images = updatedData.images;
     if (updatedData.customAttributes !== undefined) safeFields.customAttributes = updatedData.customAttributes;
     if (updatedData.location) {
@@ -269,7 +275,15 @@ export class ListingService {
     if (!isAdmin) {
       if (updatedData.status === 'sold') {
         safeFields.status = 'sold';
-      } else if (existing.status === 'approved' && (updatedData.title || updatedData.description || updatedData.price || updatedData.images)) {
+      } else if (
+        existing.status === 'approved' &&
+        (updatedData.title ||
+          updatedData.description ||
+          updatedData.price ||
+          updatedData.images ||
+          updatedData.categoryId !== undefined ||
+          updatedData.subcategoryId !== undefined)
+      ) {
         // Reset approved ad to pending when key content is edited by seller
         safeFields.status = 'pending';
       }
@@ -294,7 +308,9 @@ export class ListingService {
         return { success: false, error: 'Failed to update listing', status: 500 };
       }
 
-      invalidateLiveListingCountsCache();
+      if (doesListingUpdateAffectCounts(safeFields)) {
+        await invalidateLiveListingCountsCache();
+      }
       return { success: true, listing: updated, status: 200 };
     } catch (err: any) {
       console.error('ListingService.updateListing error:', err);
@@ -312,7 +328,7 @@ export class ListingService {
 
     const deleted = await listingRepository.delete(id);
     if (deleted) {
-      invalidateLiveListingCountsCache();
+      await invalidateLiveListingCountsCache();
     }
     return deleted;
   }
@@ -320,7 +336,7 @@ export class ListingService {
   public async bulkApprove(ids: string[]): Promise<number> {
     const res = await listingRepository.bulkUpdateStatus(ids, 'approved');
     if (res.updatedCount > 0) {
-      invalidateLiveListingCountsCache();
+      await invalidateLiveListingCountsCache();
     }
     return res.updatedCount;
   }
@@ -328,7 +344,7 @@ export class ListingService {
   public async bulkReject(ids: string[], reason: string): Promise<number> {
     const res = await listingRepository.bulkUpdateStatus(ids, 'rejected', reason);
     if (res.updatedCount > 0) {
-      invalidateLiveListingCountsCache();
+      await invalidateLiveListingCountsCache();
     }
     return res.updatedCount;
   }
@@ -336,7 +352,7 @@ export class ListingService {
   public async bulkDelete(ids: string[]): Promise<number> {
     const res = await listingRepository.bulkDelete(ids);
     if (res.deletedCount > 0) {
-      invalidateLiveListingCountsCache();
+      await invalidateLiveListingCountsCache();
     }
     return res.deletedCount;
   }
@@ -344,7 +360,7 @@ export class ListingService {
   public async bulkRenew(ids: string[], days: number = 30): Promise<number> {
     const res = await listingRepository.bulkRenew(ids, days);
     if (res.renewedCount > 0) {
-      invalidateLiveListingCountsCache();
+      await invalidateLiveListingCountsCache();
     }
     return res.renewedCount;
   }
@@ -359,7 +375,7 @@ export class ListingService {
 
     const updated = await listingRepository.update(id, { status: 'sold' });
     if (updated !== null) {
-      invalidateLiveListingCountsCache();
+      await invalidateLiveListingCountsCache();
     }
     return updated !== null;
   }
@@ -370,9 +386,6 @@ export class ListingService {
       isFeatured,
       featuredUntil: until,
     });
-    if (updated !== null) {
-      invalidateLiveListingCountsCache();
-    }
     return updated !== null;
   }
 

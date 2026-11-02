@@ -410,13 +410,20 @@ export const advertisingCampaigns = pgTable('advertising_campaigns', {
 });
 
 // 23. Cache Invalidation Outbox
-export const cacheInvalidationOutbox = pgTable('cache_invalidation_outbox', {
-  id: varchar('id', { length: 64 }).primaryKey(),
-  tag: varchar('tag', { length: 128 }).notNull().unique(),
-  status: varchar('status', { length: 32 }).notNull().default('pending'),
-  attempts: integer('attempts').notNull().default(0),
-  lastError: text('last_error'),
-  nextRetryAt: timestamp('next_retry_at', { withTimezone: true }).notNull().defaultNow(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-});
+export const cacheInvalidationOutbox = pgTable(
+  'cache_invalidation_outbox',
+  {
+    id: varchar('id', { length: 64 }).primaryKey(),
+    tag: varchar('tag', { length: 128 }).notNull().unique(),
+    status: varchar('status', { length: 32 }).notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    nextRetryAt: timestamp('next_retry_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('idx_cache_invalidation_outbox_status_retry').on(table.status, table.nextRetryAt),
+  ]
+);
+
