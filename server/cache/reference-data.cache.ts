@@ -11,6 +11,7 @@ export const REFERENCE_CACHE_TAGS = {
   NAVIGATION: 'marketplace-navigation',
   LOCATIONS: 'marketplace-locations',
   SETTINGS: 'marketplace-settings',
+  LISTING_COUNTS: 'marketplace-live-counts',
 } as const;
 
 /**
@@ -66,6 +67,17 @@ const fetchCachedSystemSettingsInternal = unstable_cache(
   }
 );
 
+const fetchCachedLiveListingCountsInternal = unstable_cache(
+  async (): Promise<{ parentCountMap: Record<string, number>; subCountMap: Record<string, number> }> => {
+    return categoryRepository.findLiveListingCounts();
+  },
+  ['marketplace-reference-live-listing-counts-v1'],
+  {
+    tags: [REFERENCE_CACHE_TAGS.LISTING_COUNTS],
+    revalidate: false,
+  }
+);
+
 /**
  * Returns the cached category + subcategory hierarchy (without dynamic listing counts).
  * Deduplicated per-request via React `cache()` and shared across requests via Next.js `unstable_cache`.
@@ -85,13 +97,25 @@ export const getCachedCategoryHierarchy = cache(async (): Promise<Category[]> =>
 });
 
 /**
- * Combines the cached static category/subcategory hierarchy with live, uncached
+ * Returns cached live listing counts per category and subcategory.
+ * Deduplicated per-request via React `cache()` and shared across requests via Next.js `unstable_cache`.
+ */
+export const getCachedLiveListingCounts = cache(async () => {
+  if (failedInvalidationTags.has(REFERENCE_CACHE_TAGS.LISTING_COUNTS)) {
+    tryHealInvalidationTag(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
+    return categoryRepository.findLiveListingCounts();
+  }
+  return fetchCachedLiveListingCountsInternal();
+});
+
+/**
+ * Combines the cached static category/subcategory hierarchy with cached, tag-invalidatable
  * listing counts from PostgreSQL. Deduplicated within a single request via React `cache()`.
  */
 export const getCategoriesWithLiveCounts = cache(async (): Promise<Category[]> => {
   const [hierarchy, { parentCountMap, subCountMap }] = await Promise.all([
     getCachedCategoryHierarchy(),
-    categoryRepository.findLiveListingCounts(),
+    getCachedLiveListingCounts(),
   ]);
 
   return hierarchy.map((cat) => ({
@@ -204,3 +228,24 @@ export function invalidateSettingsReferenceCache(): void {
     console.error('[ReferenceCache] Failed to revalidate root layout path after settings mutation:', error);
   }
 }
+
+/**
+ * Invalidates cached live listing counts data.
+ * Must be called whenever listings are created, updated, status-changed, or deleted.
+ */
+export function invalidateLiveListingCountsCache(): void {
+  try {
+    revalidateTag(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
+    failedInvalidationTags.delete(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
+  } catch (error) {
+    console.error(`[ReferenceCache] Failed to revalidate tag "${REFERENCE_CACHE_TAGS.LISTING_COUNTS}":`, error);
+    failedInvalidationTags.add(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
+  }
+
+  try {
+    revalidatePath('/', 'layout');
+  } catch (error) {
+    console.error('[ReferenceCache] Failed to revalidate root layout path after listing count mutation:', error);
+  }
+}
+

@@ -1,5 +1,6 @@
 import { listingRepository, ListingFilterQuery } from '@/server/repositories/listing.repository';
 import { adminRepository } from '@/server/repositories/admin.repository';
+import { invalidateLiveListingCountsCache } from '@/server/cache/reference-data.cache';
 import { Listing } from '@/lib/types';
 import { normalizeAdTitle, DUPLICATE_TITLE_ERROR_MESSAGE } from '@/lib/utils/adTitleValidation';
 
@@ -192,6 +193,7 @@ export class ListingService {
         });
       }
 
+      invalidateLiveListingCountsCache();
       return { success: true, listing: created, status: 201 };
     } catch (err: any) {
       console.error('ListingService.createListing error:', err);
@@ -282,6 +284,7 @@ export class ListingService {
         return { success: false, error: 'Failed to update listing', status: 500 };
       }
 
+      invalidateLiveListingCountsCache();
       return { success: true, listing: updated, status: 200 };
     } catch (err: any) {
       console.error('ListingService.updateListing error:', err);
@@ -297,26 +300,42 @@ export class ListingService {
       throw new Error('Unauthorized: You do not own this listing');
     }
 
-    return await listingRepository.delete(id);
+    const deleted = await listingRepository.delete(id);
+    if (deleted) {
+      invalidateLiveListingCountsCache();
+    }
+    return deleted;
   }
 
   public async bulkApprove(ids: string[]): Promise<number> {
     const res = await listingRepository.bulkUpdateStatus(ids, 'approved');
+    if (res.updatedCount > 0) {
+      invalidateLiveListingCountsCache();
+    }
     return res.updatedCount;
   }
 
   public async bulkReject(ids: string[], reason: string): Promise<number> {
     const res = await listingRepository.bulkUpdateStatus(ids, 'rejected', reason);
+    if (res.updatedCount > 0) {
+      invalidateLiveListingCountsCache();
+    }
     return res.updatedCount;
   }
 
   public async bulkDelete(ids: string[]): Promise<number> {
     const res = await listingRepository.bulkDelete(ids);
+    if (res.deletedCount > 0) {
+      invalidateLiveListingCountsCache();
+    }
     return res.deletedCount;
   }
 
   public async bulkRenew(ids: string[], days: number = 30): Promise<number> {
     const res = await listingRepository.bulkRenew(ids, days);
+    if (res.renewedCount > 0) {
+      invalidateLiveListingCountsCache();
+    }
     return res.renewedCount;
   }
 
@@ -329,6 +348,9 @@ export class ListingService {
     }
 
     const updated = await listingRepository.update(id, { status: 'sold' });
+    if (updated !== null) {
+      invalidateLiveListingCountsCache();
+    }
     return updated !== null;
   }
 
@@ -338,6 +360,9 @@ export class ListingService {
       isFeatured,
       featuredUntil: until,
     });
+    if (updated !== null) {
+      invalidateLiveListingCountsCache();
+    }
     return updated !== null;
   }
 
