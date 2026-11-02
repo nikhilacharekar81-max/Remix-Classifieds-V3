@@ -117,6 +117,10 @@ function getNavFeedbackSnapshot(): NavigationFeedbackState {
   return navFeedbackState;
 }
 
+export function getPendingNavigationUrl(): string | null {
+  return navFeedbackState.pendingUrl;
+}
+
 const SERVER_NAV_SNAPSHOT: NavigationFeedbackState = {
   pendingUrl: null,
   pendingLinkId: null,
