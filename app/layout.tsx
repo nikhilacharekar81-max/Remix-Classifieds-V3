@@ -3,7 +3,7 @@ import { Plus_Jakarta_Sans, DM_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { ClientAppProvider } from '@/components/ClientAppProvider';
 import {
-  getCachedCategoryHierarchy,
+  getCategoriesWithLiveCounts,
   getCachedLocations,
   getCachedSystemSettings,
 } from '@/server/cache/reference-data.cache';
@@ -58,7 +58,7 @@ export default async function RootLayout({
   let initialServerData = undefined;
   try {
     const [categories, locations, settings] = await Promise.all([
-      getCachedCategoryHierarchy(),
+      getCategoriesWithLiveCounts(),
       getCachedLocations(),
       getCachedSystemSettings(),
     ]);

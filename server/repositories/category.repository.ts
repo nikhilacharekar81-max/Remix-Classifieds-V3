@@ -1,4 +1,4 @@
-import { db } from '@/src/db/index';
+import { db, withDbRetry } from '@/src/db/index';
 import * as schema from '@/src/db/schema';
 import { eq, asc, and, gte, sql } from 'drizzle-orm';
 import { Category, CustomFieldDefinition } from '@/lib/types';
@@ -31,10 +31,12 @@ export class CategoryRepository {
   public async findAllHierarchy(): Promise<Category[]> {
     try {
       await ensureDatabaseSeeded();
-      const rows = await db
-        .select()
-        .from(schema.categories)
-        .orderBy(asc(schema.categories.orderIndex));
+      const rows = await withDbRetry(() =>
+        db
+          .select()
+          .from(schema.categories)
+          .orderBy(asc(schema.categories.orderIndex))
+      );
       return rows.map((r) => this.mapRowToCategory(r, 0));
     } catch (error) {
       console.error('CategoryRepository.findAllHierarchy error:', error);
@@ -53,30 +55,32 @@ export class CategoryRepository {
     try {
       await ensureDatabaseSeeded();
       const now = new Date();
-      const [catCounts, subCounts] = await Promise.all([
-        db
-          .select({
-            categoryId: schema.listings.categoryId,
-            count: sql<number>`count(*)::int`,
-          })
-          .from(schema.listings)
-          .where(and(eq(schema.listings.status, 'approved'), gte(schema.listings.expiresAt, now)))
-          .groupBy(schema.listings.categoryId),
-        db
-          .select({
-            subcategoryId: schema.listings.subcategoryId,
-            count: sql<number>`count(*)::int`,
-          })
-          .from(schema.listings)
-          .where(
-            and(
-              eq(schema.listings.status, 'approved'),
-              gte(schema.listings.expiresAt, now),
-              sql`${schema.listings.subcategoryId} IS NOT NULL`
+      const [catCounts, subCounts] = await withDbRetry(() =>
+        Promise.all([
+          db
+            .select({
+              categoryId: schema.listings.categoryId,
+              count: sql<number>`count(*)::int`,
+            })
+            .from(schema.listings)
+            .where(and(eq(schema.listings.status, 'approved'), gte(schema.listings.expiresAt, now)))
+            .groupBy(schema.listings.categoryId),
+          db
+            .select({
+              subcategoryId: schema.listings.subcategoryId,
+              count: sql<number>`count(*)::int`,
+            })
+            .from(schema.listings)
+            .where(
+              and(
+                eq(schema.listings.status, 'approved'),
+                gte(schema.listings.expiresAt, now),
+                sql`${schema.listings.subcategoryId} IS NOT NULL`
+              )
             )
-          )
-          .groupBy(schema.listings.subcategoryId),
-      ]);
+            .groupBy(schema.listings.subcategoryId),
+        ])
+      );
 
       const parentCountMap: Record<string, number> = {};
       for (const c of catCounts) {

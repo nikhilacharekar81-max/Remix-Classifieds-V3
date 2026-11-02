@@ -249,9 +249,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialServerDat
 
   useEffect(() => {
     fetch('/api/auth/me')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) return null;
+        const ct = res.headers.get('content-type');
+        if (!ct || !ct.includes('application/json')) return null;
+        return res.json().catch(() => null);
+      })
       .then((data) => {
-        if (data.authenticated && data.user) {
+        if (data && data.authenticated && data.user) {
           setAuthUser(data.user);
           setActiveUserId(data.user.id);
           if (data.isAdmin || data.isModerator) {
@@ -517,7 +522,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialServerDat
     try {
       const res = await fetch('/api/bootstrap', { cache: 'no-store' });
       if (res.ok) {
-        const data = await res.json();
+        const ct = res.headers.get('content-type');
+        if (!ct || !ct.includes('application/json')) return;
+        const data = await res.json().catch(() => null);
+        if (!data) return;
         if (Array.isArray(data.listings)) {
           setListings(data.listings);
         }

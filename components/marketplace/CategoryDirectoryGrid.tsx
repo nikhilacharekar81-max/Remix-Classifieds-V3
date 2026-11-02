@@ -352,7 +352,9 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
             const isExpanded = expandedCats[cat.id] || searchQuery.length > 0;
             const visibleSubs = isExpanded ? subs : subs.slice(0, 6);
             const hasMore = subs.length > 6 && !searchQuery;
-            const totalLiveAds = cat.listingCount > 0 ? cat.listingCount : (listingCounts.parentMap[cat.id] || 0);
+            const totalLiveAds = (cat.listingCount && cat.listingCount > 0)
+              ? cat.listingCount
+              : (listingCounts.parentMap[cat.id] || 0);
             const catUrl = buildChillyUrl({
               city: currentCity,
               categoryId: cat.id,
@@ -411,8 +413,9 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
                       </p>
                     ) : (
                       visibleSubs.map((sub) => {
-                        const isSubSelected = selectedSubcategoryId === sub.id;
-                        const subAds = sub.listingCount > 0 ? sub.listingCount : (listingCounts.subMap[sub.id] || 0);
+                        const subAds = (sub.listingCount && sub.listingCount > 0)
+                          ? sub.listingCount
+                          : (listingCounts.subMap[sub.id] || 0);
                         const subUrl = buildChillyUrl({
                           city: currentCity,
                           categoryId: cat.id,

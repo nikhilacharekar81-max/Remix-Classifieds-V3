@@ -3,7 +3,7 @@ import { unstable_cache, revalidateTag, revalidatePath } from 'next/cache';
 import { categoryRepository } from '@/server/repositories/category.repository';
 import { locationRepository } from '@/server/repositories/location.repository';
 import { adminRepository } from '@/server/repositories/admin.repository';
-import { db } from '@/src/db/index';
+import { db, withDbRetry } from '@/src/db/index';
 import { cacheInvalidationOutbox } from '@/src/db/schema';
 import { eq, and, lte, sql } from 'drizzle-orm';
 import type { Category, LocationItem, SystemSettings } from '@/lib/types';
@@ -42,47 +42,49 @@ export async function recordDurableInvalidation(tag: string, success: boolean, e
     const now = new Date();
     const id = `outbox_${tag}`;
 
-    if (success) {
-      await db
-        .insert(cacheInvalidationOutbox)
-        .values({
-          id,
-          tag,
-          status: 'completed',
-          attempts: 1,
-          lastError: null,
-          nextRetryAt: now,
-          completedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: cacheInvalidationOutbox.tag,
-          set: {
+    await withDbRetry(() => {
+      if (success) {
+        return db
+          .insert(cacheInvalidationOutbox)
+          .values({
+            id,
+            tag,
             status: 'completed',
+            attempts: 1,
             lastError: null,
+            nextRetryAt: now,
             completedAt: now,
-          },
-        });
-    } else {
-      await db
-        .insert(cacheInvalidationOutbox)
-        .values({
-          id,
-          tag,
-          status: 'pending',
-          attempts: 1,
-          lastError: errMessage || 'Failed to revalidate cache tag',
-          nextRetryAt: new Date(Date.now() + 30000),
-        })
-        .onConflictDoUpdate({
-          target: cacheInvalidationOutbox.tag,
-          set: {
+          })
+          .onConflictDoUpdate({
+            target: cacheInvalidationOutbox.tag,
+            set: {
+              status: 'completed',
+              lastError: null,
+              completedAt: now,
+            },
+          });
+      } else {
+        return db
+          .insert(cacheInvalidationOutbox)
+          .values({
+            id,
+            tag,
             status: 'pending',
-            attempts: sql`${cacheInvalidationOutbox.attempts} + 1`,
+            attempts: 1,
             lastError: errMessage || 'Failed to revalidate cache tag',
             nextRetryAt: new Date(Date.now() + 30000),
-          },
-        });
-    }
+          })
+          .onConflictDoUpdate({
+            target: cacheInvalidationOutbox.tag,
+            set: {
+              status: 'pending',
+              attempts: sql`${cacheInvalidationOutbox.attempts} + 1`,
+              lastError: errMessage || 'Failed to revalidate cache tag',
+              nextRetryAt: new Date(Date.now() + 30000),
+            },
+          });
+      }
+    });
   } catch (dbErr) {
     console.error(`[ReferenceCache] Failed to record durable outbox entry for tag "${tag}":`, dbErr);
   }
@@ -95,46 +97,54 @@ export async function recordDurableInvalidation(tag: string, success: boolean, e
 export async function processPendingInvalidations(): Promise<void> {
   try {
     const now = new Date();
-    const pending = await db
-      .select()
-      .from(cacheInvalidationOutbox)
-      .where(and(eq(cacheInvalidationOutbox.status, 'pending'), lte(cacheInvalidationOutbox.nextRetryAt, now)))
-      .limit(5);
+    const pending = await withDbRetry(() =>
+      db
+        .select()
+        .from(cacheInvalidationOutbox)
+        .where(and(eq(cacheInvalidationOutbox.status, 'pending'), lte(cacheInvalidationOutbox.nextRetryAt, now)))
+        .limit(5)
+    );
 
     for (const entry of pending) {
       // Atomic lock: update status to 'processing' so concurrent workers do not duplicate work
-      const lockResult = await db
-        .update(cacheInvalidationOutbox)
-        .set({ status: 'processing' })
-        .where(and(eq(cacheInvalidationOutbox.id, entry.id), eq(cacheInvalidationOutbox.status, 'pending')))
-        .returning({ id: cacheInvalidationOutbox.id });
+      const lockResult = await withDbRetry(() =>
+        db
+          .update(cacheInvalidationOutbox)
+          .set({ status: 'processing' })
+          .where(and(eq(cacheInvalidationOutbox.id, entry.id), eq(cacheInvalidationOutbox.status, 'pending')))
+          .returning({ id: cacheInvalidationOutbox.id })
+      );
 
       if (lockResult.length === 0) continue; // Another worker claimed it
 
       try {
         revalidateTag(entry.tag);
         failedInvalidationTags.delete(entry.tag);
-        await db
-          .update(cacheInvalidationOutbox)
-          .set({
-            status: 'completed',
-            lastError: null,
-            completedAt: new Date(),
-          })
-          .where(eq(cacheInvalidationOutbox.id, entry.id));
+        await withDbRetry(() =>
+          db
+            .update(cacheInvalidationOutbox)
+            .set({
+              status: 'completed',
+              lastError: null,
+              completedAt: new Date(),
+            })
+            .where(eq(cacheInvalidationOutbox.id, entry.id))
+        );
       } catch (err: any) {
         const nextAttempts = entry.attempts + 1;
         const backoffMs = Math.min(300000, Math.pow(2, Math.min(nextAttempts, 6)) * 5000);
         failedInvalidationTags.add(entry.tag);
-        await db
-          .update(cacheInvalidationOutbox)
-          .set({
-            status: 'pending',
-            attempts: nextAttempts,
-            lastError: String(err?.message || err),
-            nextRetryAt: new Date(Date.now() + backoffMs),
-          })
-          .where(eq(cacheInvalidationOutbox.id, entry.id));
+        await withDbRetry(() =>
+          db
+            .update(cacheInvalidationOutbox)
+            .set({
+              status: 'pending',
+              attempts: nextAttempts,
+              lastError: String(err?.message || err),
+              nextRetryAt: new Date(Date.now() + backoffMs),
+            })
+            .where(eq(cacheInvalidationOutbox.id, entry.id))
+        );
       }
     }
   } catch (err) {
@@ -223,22 +233,43 @@ export const getCachedLiveListingCounts = cache(async () => {
   return fetchCachedLiveListingCountsInternal();
 });
 
-/**
- * Combines the cached static category/subcategory hierarchy with cached, tag-invalidatable
- * listing counts from PostgreSQL. Deduplicated within a single request via React `cache()`.
- */
 export const getCategoriesWithLiveCounts = cache(async (): Promise<Category[]> => {
-  const [hierarchy, { parentCountMap, subCountMap }] = await Promise.all([
-    getCachedCategoryHierarchy(),
-    getCachedLiveListingCounts(),
-  ]);
+  try {
+    const [hierarchy, counts] = await Promise.all([
+      getCachedCategoryHierarchy(),
+      getCachedLiveListingCounts(),
+    ]);
 
-  return hierarchy.map((cat) => ({
-    ...cat,
-    listingCount: cat.parentId
-      ? (subCountMap[cat.id] || 0)
-      : (parentCountMap[cat.id] || 0),
-  }));
+    const parentCountMap = counts?.parentCountMap || {};
+    const subCountMap = counts?.subCountMap || {};
+
+    // Calculate sum of child subcategory counts for each parent category
+    const childrenSumMap: Record<string, number> = {};
+    for (const cat of hierarchy) {
+      if (cat.parentId) {
+        const subCount = subCountMap[cat.id] || 0;
+        childrenSumMap[cat.parentId] = (childrenSumMap[cat.parentId] || 0) + subCount;
+      }
+    }
+
+    return hierarchy.map((cat) => {
+      if (cat.parentId) {
+        return {
+          ...cat,
+          listingCount: subCountMap[cat.id] || 0,
+        };
+      }
+      const directCount = parentCountMap[cat.id] || 0;
+      const childrenSum = childrenSumMap[cat.id] || 0;
+      return {
+        ...cat,
+        listingCount: Math.max(directCount, childrenSum),
+      };
+    });
+  } catch (error) {
+    console.error('[ReferenceCache] getCategoriesWithLiveCounts error:', error);
+    return getCachedCategoryHierarchy();
+  }
 });
 
 /**

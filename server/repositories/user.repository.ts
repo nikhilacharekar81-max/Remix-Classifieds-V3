@@ -1,4 +1,4 @@
-import { db } from '@/src/db/index';
+import { db, withDbRetry } from '@/src/db/index';
 import * as schema from '@/src/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { UserAccount } from '@/lib/types';
@@ -38,7 +38,9 @@ export class UserRepository {
 
   public async findById(id: string): Promise<UserAccount | null> {
     try {
-      const rows = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
+      const rows = await withDbRetry(() =>
+        db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1)
+      );
       if (!rows.length) return null;
       return this.mapRowToUser(rows[0]);
     } catch (error) {
@@ -179,15 +181,17 @@ export class UserRepository {
 
   public async findSession(sessionId: string) {
     try {
-      const rows = await db
-        .select({
-          session: schema.userSessions,
-          user: schema.users,
-        })
-        .from(schema.userSessions)
-        .innerJoin(schema.users, eq(schema.userSessions.userId, schema.users.id))
-        .where(eq(schema.userSessions.id, sessionId))
-        .limit(1);
+      const rows = await withDbRetry(() =>
+        db
+          .select({
+            session: schema.userSessions,
+            user: schema.users,
+          })
+          .from(schema.userSessions)
+          .innerJoin(schema.users, eq(schema.userSessions.userId, schema.users.id))
+          .where(eq(schema.userSessions.id, sessionId))
+          .limit(1)
+      );
 
       if (!rows.length) return null;
       const { session, user } = rows[0];
