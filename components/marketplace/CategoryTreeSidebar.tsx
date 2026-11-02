@@ -1,5 +1,3 @@
-'use client';
-
 import React from 'react';
 import { FolderTree, ChevronDown, Tag } from 'lucide-react';
 import { Category } from '@/lib/types';

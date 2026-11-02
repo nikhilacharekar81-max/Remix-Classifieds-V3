@@ -1,5 +1,11 @@
-import { AppClientRouter } from '@/components/AppClientRouter';
+import { PublicMarketplacePage } from '@/components/marketplace/PublicMarketplacePage';
 import { listingRepository } from '@/server/repositories/listing.repository';
+import {
+  getCategoriesWithLiveCounts,
+  getCachedLocations,
+  getCachedSystemSettings,
+} from '@/server/cache/reference-data.cache';
+import { INITIAL_CATEGORIES, INITIAL_LOCATIONS } from '@/lib/data/initialData';
 import { serializeJsonLd } from '@/lib/utils/seoAndUrlHelper';
 import type { Metadata } from 'next';
 
@@ -23,12 +29,26 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   let latestResult = { items: [] as any[], total: 0 };
+  let categories = INITIAL_CATEGORIES;
+  let locations = INITIAL_LOCATIONS;
+  let enablePrivacyChoices = false;
+
   try {
-    latestResult = await listingRepository.findMarketplaceListings({
-      status: 'approved',
-      limit: 10,
-      offset: 0,
-    });
+    const [fetchedLatest, fetchedCategories, fetchedLocations, fetchedSettings] =
+      await Promise.all([
+        listingRepository.findMarketplaceListings({
+          status: 'approved',
+          limit: 10,
+          offset: 0,
+        }),
+        getCategoriesWithLiveCounts(),
+        getCachedLocations(),
+        getCachedSystemSettings(),
+      ]);
+    latestResult = fetchedLatest;
+    if (fetchedCategories.length > 0) categories = fetchedCategories;
+    if (fetchedLocations.length > 0) locations = fetchedLocations;
+    enablePrivacyChoices = Boolean(fetchedSettings?.enablePrivacyChoices);
   } catch (err) {
     console.error('HomePage initial listing fetch error:', err);
   }
@@ -60,12 +80,15 @@ export default async function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
-      <AppClientRouter
-        initialPath="/"
-        initialListings={latestResult.items}
-        initialTotalListings={latestResult.total}
+      <PublicMarketplacePage
+        mode="directory"
+        effectiveCity="All India"
+        categories={categories}
+        locations={locations}
+        listings={latestResult.items}
+        totalListings={latestResult.total}
+        enablePrivacyChoices={enablePrivacyChoices}
       />
     </>
   );
 }
-

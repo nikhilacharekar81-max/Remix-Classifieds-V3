@@ -1,5 +1,11 @@
-import { AppClientRouter } from '@/components/AppClientRouter';
+import { PublicMarketplacePage } from '@/components/marketplace/PublicMarketplacePage';
 import { listingService } from '@/server/services/listing.service';
+import {
+  getCategoriesWithLiveCounts,
+  getCachedLocations,
+  getCachedSystemSettings,
+} from '@/server/cache/reference-data.cache';
+import { INITIAL_CATEGORIES, INITIAL_LOCATIONS } from '@/lib/data/initialData';
 import type { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
@@ -45,25 +51,47 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   }
 
   let paginated = { items: [] as any[], total: 0, page: 1 };
+  let categories = INITIAL_CATEGORIES;
+  let locations = INITIAL_LOCATIONS;
+  let enablePrivacyChoices = false;
+
   try {
-    paginated = await listingService.getPaginatedPageListings({
-      city: cleanQuery.city,
-      category: cleanQuery.category,
-      subcategory: cleanQuery.subcategory,
-      query: cleanQuery,
-      pageSize: 50,
-    });
+    const [fetchedPaginated, fetchedCategories, fetchedLocations, fetchedSettings] =
+      await Promise.all([
+        listingService.getPaginatedPageListings({
+          city: cleanQuery.city,
+          category: cleanQuery.category,
+          subcategory: cleanQuery.subcategory,
+          query: cleanQuery,
+          pageSize: 50,
+        }),
+        getCategoriesWithLiveCounts(),
+        getCachedLocations(),
+        getCachedSystemSettings(),
+      ]);
+    paginated = fetchedPaginated;
+    if (fetchedCategories.length > 0) categories = fetchedCategories;
+    if (fetchedLocations.length > 0) locations = fetchedLocations;
+    enablePrivacyChoices = Boolean(fetchedSettings?.enablePrivacyChoices);
   } catch (err) {
     console.error('SearchPage listing fetch error:', err);
   }
 
   return (
-    <AppClientRouter
-      initialPath="/search"
-      initialQuery={cleanQuery}
-      initialListings={paginated.items}
-      initialTotalListings={paginated.total}
-      initialPage={paginated.page}
+    <PublicMarketplacePage
+      mode="listings"
+      isSearchRoute
+      effectiveCity={cleanQuery.city || 'All India'}
+      effectiveCategory={cleanQuery.category || 'all'}
+      effectiveSubcategory={cleanQuery.subcategory || 'all'}
+      effectiveSearch={cleanQuery.q || ''}
+      query={cleanQuery}
+      categories={categories}
+      locations={locations}
+      listings={paginated.items}
+      totalListings={paginated.total}
+      currentPage={paginated.page}
+      enablePrivacyChoices={enablePrivacyChoices}
     />
   );
 }

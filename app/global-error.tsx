@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import {
   attemptChunkErrorRecovery,
   isChunkLoadFailure,
-} from '@/components/ClientAppProvider';
+} from '@/lib/router/chunkErrorRecovery';
 import { clearNavigationFeedback, getPendingNavigationUrl } from '@/lib/router/useRouter';
 
 export default function GlobalError({

@@ -1,7 +1,8 @@
 'use client';
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, X, Grid, Loader2 } from 'lucide-react';
-import { useApp } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContext';
+import { Category } from '@/lib/types';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
 import { NavLink } from '@/components/common/NavLink';
 import { useNavigationFeedback } from '@/lib/router/useRouter';
@@ -10,6 +11,7 @@ interface CategorySubNavbarProps {
   currentCity?: string;
   activeCategoryId?: string;
   activeSubcategoryId?: string;
+  categories?: Category[];
 }
 
 interface TrendingCategoryItem {
@@ -22,18 +24,17 @@ export const CategorySubNavbar: React.FC<CategorySubNavbarProps> = ({
   currentCity,
   activeCategoryId,
   activeSubcategoryId,
+  categories: propCategories,
 }) => {
-  const {
-    categories,
-    selectedMarketplaceCity,
-  } = useApp();
+  const app = useAppOptional();
+  const categories = propCategories ?? app?.categories ?? [];
   const { isNavigating, pendingLinkId } = useNavigationFeedback();
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const city = currentCity || selectedMarketplaceCity || 'All India';
+  const city = currentCity || app?.selectedMarketplaceCity || 'All India';
 
   // OLX Trending / Top Popular Category Links
   const trendingCategories: TrendingCategoryItem[] = [

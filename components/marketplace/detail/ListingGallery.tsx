@@ -23,6 +23,7 @@ export const ListingGallery: React.FC<ListingGalleryProps> = ({
           src={listing.images[activeImageIndex] || listing.images[0]}
           alt={listing.title}
           categoryId={listing.categoryId}
+          priority={activeImageIndex === 0}
           className="w-full h-full object-contain"
         />
 

@@ -1,6 +1,4 @@
-'use client';
-
-import React, { useMemo } from 'react';
+import React from 'react';
 import { NavLink } from '@/components/common/NavLink';
 
 export interface MarketplacePaginationProps {
@@ -18,7 +16,7 @@ export const MarketplacePagination: React.FC<MarketplacePaginationProps> = ({
   itemsPerPage,
   buildPageHref,
 }) => {
-  const paginationWindow = useMemo(() => {
+  const paginationWindow = (() => {
     const pages: Array<number | 'ellipsis-start' | 'ellipsis-end'> = [];
     if (totalPages <= 7) {
       for (let i = 1; i <= totalPages; i++) pages.push(i);
@@ -32,7 +30,7 @@ export const MarketplacePagination: React.FC<MarketplacePaginationProps> = ({
     if (end < totalPages - 1) pages.push('ellipsis-end');
     pages.push(totalPages);
     return pages;
-  }, [currentPage, totalPages]);
+  })();
 
   return (
     <nav

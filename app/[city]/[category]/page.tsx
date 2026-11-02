@@ -2,12 +2,20 @@ import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import {
-  getCachedCategoryHierarchy,
+  getCategoriesWithLiveCounts,
   getCachedLocations,
+  getCachedSystemSettings,
 } from '@/server/cache/reference-data.cache';
 import { listingService } from '@/server/services/listing.service';
+import { getInitialServerDataForAppRouter } from '@/server/services/initialServerData';
 import { AppClientRouter } from '@/components/AppClientRouter';
-import { stripChillySuffixes, unslugifyCity, unslugifyCategory, serializeJsonLd } from '@/lib/utils/seoAndUrlHelper';
+import { PublicMarketplacePage } from '@/components/marketplace/PublicMarketplacePage';
+import {
+  stripChillySuffixes,
+  unslugifyCity,
+  unslugifyCategory,
+  serializeJsonLd,
+} from '@/lib/utils/seoAndUrlHelper';
 import { INITIAL_CATEGORIES, INITIAL_LOCATIONS } from '@/lib/data/initialData';
 
 export const dynamic = 'force-dynamic';
@@ -21,9 +29,10 @@ const getCategoryCityContext = cache(async (cityParam: string, categoryParam: st
   const { cleanSlug: cleanCitySlug } = stripChillySuffixes(cityParam);
   const { cleanSlug: cleanCatSlug } = stripChillySuffixes(categoryParam);
 
-  const [locations, allCategories] = await Promise.all([
+  const [locations, allCategories, settings] = await Promise.all([
     getCachedLocations(),
-    getCachedCategoryHierarchy(),
+    getCategoriesWithLiveCounts(),
+    getCachedSystemSettings(),
   ]);
 
   const loc =
@@ -34,13 +43,15 @@ const getCategoryCityContext = cache(async (cityParam: string, categoryParam: st
     allCategories.find((c) => c.slug === cleanCatSlug || c.slug === categoryParam) ?? null;
 
   const resolvedFirstCat = firstCat || unslugifyCategory(cityParam, allCategories).categoryObj;
-  const resolvedSecondCat = secondCat || unslugifyCategory(categoryParam, allCategories).categoryObj;
+  const resolvedSecondCat =
+    secondCat || unslugifyCategory(categoryParam, allCategories).categoryObj;
 
   return {
     cleanCitySlug,
     cleanCatSlug,
     locations,
     allCategories,
+    settings,
     loc,
     firstCat,
     resolvedFirstCat,
@@ -48,12 +59,16 @@ const getCategoryCityContext = cache(async (cityParam: string, categoryParam: st
   };
 });
 
-export async function generateMetadata({ params, searchParams }: CategoryCityPageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: CategoryCityPageProps): Promise<Metadata> {
   const { city, category } = await params;
   const resolvedSearch = searchParams ? await searchParams : {};
   const pageNum = Math.max(1, Number(resolvedSearch.page) || 1);
   const pageSuffix = pageNum > 1 ? ` (Page ${pageNum})` : '';
-  const canonicalUrl = pageNum > 1 ? `/${city}/${category}?page=${pageNum}` : `/${city}/${category}`;
+  const canonicalUrl =
+    pageNum > 1 ? `/${city}/${category}?page=${pageNum}` : `/${city}/${category}`;
 
   const { cleanCatSlug, locations, loc, firstCat, resolvedSecondCat } =
     await getCategoryCityContext(city, category);
@@ -97,7 +112,10 @@ export async function generateMetadata({ params, searchParams }: CategoryCityPag
   };
 }
 
-export default async function CategoryCityPage({ params, searchParams }: CategoryCityPageProps) {
+export default async function CategoryCityPage({
+  params,
+  searchParams,
+}: CategoryCityPageProps) {
   const { city, category } = await params;
   const resolvedSearch = searchParams ? await searchParams : {};
   const cleanQuery: Record<string, string> = {};
@@ -105,7 +123,6 @@ export default async function CategoryCityPage({ params, searchParams }: Categor
     if (typeof v === 'string') cleanQuery[k] = v;
   }
 
-  // Pre-resolve common slugs synchronously in-memory to launch context & listing queries in parallel
   const { cleanSlug: fastCitySlug } = stripChillySuffixes(city);
   const { cleanSlug: fastCatSlug } = stripChillySuffixes(category);
   const isFastPostRoute = fastCatSlug === 'post' || fastCatSlug === 'sell';
@@ -119,7 +136,8 @@ export default async function CategoryCityPage({ params, searchParams }: Categor
     INITIAL_CATEGORIES.find((c) => c.slug === fastCatSlug || c.slug === category) ||
     unslugifyCategory(category, INITIAL_CATEGORIES).categoryObj;
 
-  let parallelListingsPromise: ReturnType<typeof listingService.getPaginatedPageListings> | null = null;
+  let parallelListingsPromise: ReturnType<typeof listingService.getPaginatedPageListings> | null =
+    null;
   let parallelKey = '';
 
   if (!isFastPostRoute) {
@@ -131,7 +149,12 @@ export default async function CategoryCityPage({ params, searchParams }: Categor
         query: cleanQuery,
         pageSize: 50,
       });
-    } else if (fastLoc || fastCitySlug === 'all-india' || fastCitySlug === 'india' || fastCitySlug === 'all') {
+    } else if (
+      fastLoc ||
+      fastCitySlug === 'all-india' ||
+      fastCitySlug === 'india' ||
+      fastCitySlug === 'all'
+    ) {
       const fastParentCatId = fastSecondCat
         ? fastSecondCat.parentId || fastSecondCat.id
         : undefined;
@@ -153,6 +176,8 @@ export default async function CategoryCityPage({ params, searchParams }: Categor
       cleanCitySlug,
       cleanCatSlug,
       locations,
+      allCategories,
+      settings,
       loc,
       resolvedFirstCat,
       resolvedSecondCat,
@@ -207,28 +232,40 @@ export default async function CategoryCityPage({ params, searchParams }: Categor
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
         />
-        <AppClientRouter
-          initialPath={`/${city}/${category}`}
-          initialQuery={cleanQuery}
-          initialListings={paginated.items}
-          initialTotalListings={paginated.total}
-          initialPage={paginated.page}
+        <PublicMarketplacePage
+          mode="listings"
+          effectiveCity="All India"
+          effectiveCategory={resolvedFirstCat.id}
+          effectiveSubcategory={resolvedSecondCat.id}
+          query={cleanQuery}
+          categories={allCategories}
+          locations={locations}
+          listings={paginated.items}
+          totalListings={paginated.total}
+          currentPage={paginated.page}
+          enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}
         />
       </>
     );
   }
 
-  // Case 2: /{city}/post or /{city}/sell
-  if ((loc || cleanCitySlug === 'all-india') && (cleanCatSlug === 'post' || cleanCatSlug === 'sell')) {
+  // Case 2: /{city}/post or /{city}/sell (Interactive Post Ad flow)
+  if (
+    (loc || cleanCitySlug === 'all-india') &&
+    (cleanCatSlug === 'post' || cleanCatSlug === 'sell')
+  ) {
+    const initialServerData = await getInitialServerDataForAppRouter();
     return (
       <AppClientRouter
         initialPath={`/${city}/${category}`}
         initialQuery={cleanQuery}
+        initialServerData={initialServerData}
       />
     );
   }
 
-  const isSpecialCity = cleanCitySlug === 'all-india' || cleanCitySlug === 'india' || cleanCitySlug === 'all';
+  const isSpecialCity =
+    cleanCitySlug === 'all-india' || cleanCitySlug === 'india' || cleanCitySlug === 'all';
   const isSpecialCategory = cleanCatSlug === 'all';
   if ((!loc && !isSpecialCity) || (!resolvedSecondCat && !isSpecialCategory)) {
     notFound();
@@ -288,14 +325,19 @@ export default async function CategoryCityPage({ params, searchParams }: Categor
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
-      <AppClientRouter
-        initialPath={`/${city}/${category}`}
-        initialQuery={cleanQuery}
-        initialListings={paginated.items}
-        initialTotalListings={paginated.total}
-        initialPage={paginated.page}
+      <PublicMarketplacePage
+        mode="listings"
+        effectiveCity={cityName}
+        effectiveCategory={parentCatId || 'all'}
+        effectiveSubcategory={subCatId || 'all'}
+        query={cleanQuery}
+        categories={allCategories}
+        locations={locations}
+        listings={paginated.items}
+        totalListings={paginated.total}
+        currentPage={paginated.page}
+        enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}
       />
     </>
   );
 }
-

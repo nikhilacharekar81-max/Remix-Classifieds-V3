@@ -1,25 +1,47 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { useApp } from '@/context/AppContext';
-import { X, ShieldAlert, CheckCircle2, ShieldCheck, ToggleLeft, ToggleRight, Lock, MapPin, ExternalLink } from 'lucide-react';
+import React, { useState } from 'react';
+import { useAppOptional } from '@/context/AppContext';
+import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
+import { X, CheckCircle2, ShieldCheck, Lock } from 'lucide-react';
 
-export const UsPrivacyModal: React.FC = () => {
-  const { isUsPrivacyModalOpen, closeUsPrivacyModal, addToast } = useApp();
+export interface UsPrivacyModalProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
 
-  // '1YYY' means US Privacy Opt-Out Enabled (Opted Out of Sale/Sharing)
-  // '1YNN' means Opted In (Standard)
-  const [optedOut, setOptedOut] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!isUsPrivacyModalOpen) return;
-    const currentSignal = localStorage.getItem('us_privacy');
-    const isOptedOutSignal = currentSignal === '1YYY';
-    if (isOptedOutSignal !== optedOut) {
-      setOptedOut(isOptedOutSignal);
+function getInitialOptedOut(): boolean {
+  if (typeof window !== 'undefined') {
+    try {
+      return window.localStorage.getItem('us_privacy') === '1YYY';
+    } catch {
+      return false;
     }
-  }, [isUsPrivacyModalOpen, optedOut]);
+  }
+  return false;
+}
+
+export const UsPrivacyModal: React.FC<UsPrivacyModalProps> = ({ isOpen, onClose }) => {
+  const app = useAppOptional();
+
+  const isUsPrivacyModalOpen =
+    isOpen !== undefined ? isOpen : app?.isUsPrivacyModalOpen || false;
+  const closeUsPrivacyModal = onClose || app?.closeUsPrivacyModal || (() => {});
+
+  const [optedOut, setOptedOut] = useState<boolean>(getInitialOptedOut);
 
   if (!isUsPrivacyModalOpen) return null;
+
+  const notifyToast = (toast: {
+    title: string;
+    message: string;
+    type: 'success' | 'info' | 'warning' | 'error';
+  }) => {
+    if (app?.addToast) {
+      app.addToast(toast);
+    } else {
+      dispatchPublicToast(toast);
+    }
+  };
 
   const handleToggleOptOut = (e: React.ChangeEvent<HTMLInputElement>) => {
     const isChecked = e.target.checked;
@@ -28,16 +50,14 @@ export const UsPrivacyModal: React.FC = () => {
     const newSignal = isChecked ? '1YYY' : '1YNN';
     localStorage.setItem('us_privacy', newSignal);
 
-    // Communicate signal to Google AdSense / GTM tags
     const win = window as any;
     if (typeof win.__usprivacy === 'function') {
       win.__usprivacy('setPrivacy', 1, () => {}, newSignal);
     }
 
-    // Trigger window event
     window.dispatchEvent(new CustomEvent('us_privacy_updated', { detail: { signal: newSignal } }));
 
-    addToast({
+    notifyToast({
       type: isChecked ? 'info' : 'success',
       title: isChecked ? 'Opt-Out Signal Applied (CPRA / CCPA)' : 'Privacy Preference Updated',
       message: isChecked
@@ -57,7 +77,11 @@ export const UsPrivacyModal: React.FC = () => {
         <div className="p-5 border-b border-slate-200 dark:border-slate-800 bg-blue-50/60 dark:bg-blue-950/30 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-md">
-              <svg className="w-6 h-6 fill-current" viewBox="0 0 30 14" xmlns="http://www.w3.org/2000/svg">
+              <svg
+                className="w-6 h-6 fill-current"
+                viewBox="0 0 30 14"
+                xmlns="http://www.w3.org/2000/svg"
+              >
                 <path d="M7.4 12.8h6.8l3.1-11.6H10.5L7.4 12.8zm11.3 0h6.8l3.1-11.6h-6.8l-3.1 11.6zM2.8 1.2L0 12.8h4.5l2.8-11.6H2.8z" />
               </svg>
             </div>
@@ -66,7 +90,7 @@ export const UsPrivacyModal: React.FC = () => {
                 Your Privacy Choices (CPRA / CCPA / VCDPA)
               </h2>
               <p className="text-[11px] text-slate-500">
-                US State Privacy Rights & Do Not Sell / Share My Information
+                US State Privacy Rights &amp; Do Not Sell / Share My Information
               </p>
             </div>
           </div>
@@ -82,7 +106,10 @@ export const UsPrivacyModal: React.FC = () => {
         {/* Content */}
         <div className="p-6 space-y-4 text-xs text-slate-600 dark:text-slate-300">
           <p className="leading-relaxed">
-            Under California law (CPRA / CCPA), Virginia (VCDPA), Colorado, Connecticut, and Utah privacy acts, residents have the explicit right to opt out of the <strong>"sale or sharing"</strong> of personal information and <strong>targeted cross-context behavioral advertising</strong>.
+            Under California law (CPRA / CCPA), Virginia (VCDPA), Colorado, Connecticut, and Utah
+            privacy acts, residents have the explicit right to opt out of the{' '}
+            <strong>&quot;sale or sharing&quot;</strong> of personal information and{' '}
+            <strong>targeted cross-context behavioral advertising</strong>.
           </p>
 
           {/* Toggle Block */}
@@ -90,10 +117,12 @@ export const UsPrivacyModal: React.FC = () => {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <span className="font-bold text-slate-900 dark:text-white block text-sm">
-                  Opt Out of Sale / Sharing & Targeted Ads
+                  Opt Out of Sale / Sharing &amp; Targeted Ads
                 </span>
                 <span className="text-[11px] text-slate-500">
-                  Broadcasts US Privacy String signal (<code className="text-blue-600 font-mono font-bold">1YYY</code>) to Google Tag Manager and AdSense.
+                  Broadcasts US Privacy String signal (
+                  <code className="text-blue-600 font-mono font-bold">1YYY</code>) to Google Tag
+                  Manager and AdSense.
                 </span>
               </div>
 
@@ -110,11 +139,13 @@ export const UsPrivacyModal: React.FC = () => {
 
             <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-[11px]">
               <span className="text-slate-500">Active Technical Signal:</span>
-              <span className={`font-mono font-bold px-2 py-0.5 rounded ${
-                optedOut
-                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300'
-                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
-              }`}>
+              <span
+                className={`font-mono font-bold px-2 py-0.5 rounded ${
+                  optedOut
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300'
+                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
+                }`}
+              >
                 {optedOut ? 'us_privacy=1YYY (OPTED OUT)' : 'us_privacy=1YNN (STANDARD)'}
               </span>
             </div>
@@ -124,13 +155,15 @@ export const UsPrivacyModal: React.FC = () => {
             <div className="flex items-start gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
               <p>
-                <strong>Global Privacy Control (GPC):</strong> Our infrastructure automatically honors browser-level GPC signals transmitted by compatible privacy browsers.
+                <strong>Global Privacy Control (GPC):</strong> Our infrastructure automatically
+                honors browser-level GPC signals transmitted by compatible privacy browsers.
               </p>
             </div>
             <div className="flex items-start gap-2">
               <ShieldCheck className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
               <p>
-                <strong>No Mandatory Login:</strong> You do not need to register an account or provide an email address to exercise your right to opt out.
+                <strong>No Mandatory Login:</strong> You do not need to register an account or
+                provide an email address to exercise your right to opt out.
               </p>
             </div>
           </div>

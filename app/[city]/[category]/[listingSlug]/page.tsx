@@ -3,11 +3,18 @@ import type { Metadata } from 'next';
 import { listingRepository } from '@/server/repositories/listing.repository';
 import { listingService } from '@/server/services/listing.service';
 import {
-  getCachedCategoryHierarchy,
+  getCategoriesWithLiveCounts,
   getCachedLocations,
+  getCachedSystemSettings,
 } from '@/server/cache/reference-data.cache';
-import { stripChillySuffixes, unslugifyCity, unslugifyCategory, serializeJsonLd } from '@/lib/utils/seoAndUrlHelper';
-import { AppClientRouter } from '@/components/AppClientRouter';
+import {
+  stripChillySuffixes,
+  unslugifyCity,
+  unslugifyCategory,
+  serializeJsonLd,
+} from '@/lib/utils/seoAndUrlHelper';
+import { PublicMarketplacePage } from '@/components/marketplace/PublicMarketplacePage';
+import { PublicListingDetailPage } from '@/components/marketplace/PublicListingDetailPage';
 import { notFound } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
@@ -25,9 +32,10 @@ const getSubcategoryContext = cache(async (cityParam: string, listingSlugParam: 
   const { cleanSlug: cleanCitySlug } = stripChillySuffixes(cityParam);
   const { cleanSlug: cleanThirdSlug } = stripChillySuffixes(listingSlugParam);
 
-  const [categories, locations] = await Promise.all([
-    getCachedCategoryHierarchy(),
+  const [categories, locations, settings] = await Promise.all([
+    getCategoriesWithLiveCounts(),
     getCachedLocations(),
+    getCachedSystemSettings(),
   ]);
 
   const loc =
@@ -45,6 +53,7 @@ const getSubcategoryContext = cache(async (cityParam: string, listingSlugParam: 
   return {
     categories,
     locations,
+    settings,
     loc,
     cityName,
     matchedSubCat,
@@ -52,7 +61,10 @@ const getSubcategoryContext = cache(async (cityParam: string, listingSlugParam: 
   };
 });
 
-export async function generateMetadata({ params, searchParams }: ListingOrSubcategoryPageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: ListingOrSubcategoryPageProps): Promise<Metadata> {
   const { city, category, listingSlug } = await params;
   const resolvedSearch = searchParams ? await searchParams : {};
   const { itemId } = stripChillySuffixes(listingSlug);
@@ -68,7 +80,9 @@ export async function generateMetadata({ params, searchParams }: ListingOrSubcat
 
     const title = `${listing.title} — ₹${listing.price.toLocaleString('en-IN')} in ${listing.location.city} | Classifieds V2`;
     const description = `${listing.title}. Price: ₹${listing.price.toLocaleString('en-IN')}. Located in ${listing.location.locality}, ${listing.location.city}. ${listing.description.slice(0, 150)}...`;
-    const imageUrl = listing.images?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1200&q=80';
+    const imageUrl =
+      listing.images?.[0] ||
+      'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1200&q=80';
 
     return {
       title,
@@ -126,7 +140,10 @@ export async function generateMetadata({ params, searchParams }: ListingOrSubcat
   };
 }
 
-export default async function ListingHierarchicalPage({ params, searchParams }: ListingOrSubcategoryPageProps) {
+export default async function ListingHierarchicalPage({
+  params,
+  searchParams,
+}: ListingOrSubcategoryPageProps) {
   const { city, category, listingSlug } = await params;
   const resolvedSearch = searchParams ? await searchParams : {};
   const cleanQuery: Record<string, string> = {};
@@ -137,7 +154,13 @@ export default async function ListingHierarchicalPage({ params, searchParams }: 
   const { itemId } = stripChillySuffixes(listingSlug);
 
   if (itemId) {
-    const listing = await getListingById(itemId);
+    const [listing, categories, locations, settings] = await Promise.all([
+      getListingById(itemId),
+      getCategoriesWithLiveCounts(),
+      getCachedLocations(),
+      getCachedSystemSettings(),
+    ]);
+
     if (!listing || listing.status !== 'approved') {
       notFound();
     }
@@ -174,16 +197,19 @@ export default async function ListingHierarchicalPage({ params, searchParams }: 
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
         />
-        <AppClientRouter
-          initialPath={`/${city}/${category}/${listingSlug}`}
-          initialListing={listing}
-          initialListings={relatedResult.items}
+        <PublicListingDetailPage
+          listing={listing}
+          relatedListings={relatedResult.items}
+          categories={categories}
+          locations={locations}
+          enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}
         />
       </>
     );
   }
 
-  const { cityName, matchedSubCat, parentCat } = await getSubcategoryContext(city, listingSlug);
+  const { categories, locations, settings, cityName, matchedSubCat, parentCat } =
+    await getSubcategoryContext(city, listingSlug);
 
   if (!matchedSubCat) {
     notFound();
@@ -238,14 +264,19 @@ export default async function ListingHierarchicalPage({ params, searchParams }: 
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
-      <AppClientRouter
-        initialPath={`/${city}/${category}/${listingSlug}`}
-        initialQuery={cleanQuery}
-        initialListings={paginated.items}
-        initialTotalListings={paginated.total}
-        initialPage={paginated.page}
+      <PublicMarketplacePage
+        mode="listings"
+        effectiveCity={cityName}
+        effectiveCategory={matchedSubCat.parentId || matchedSubCat.id}
+        effectiveSubcategory={matchedSubCat.parentId ? matchedSubCat.id : 'all'}
+        query={cleanQuery}
+        categories={categories}
+        locations={locations}
+        listings={paginated.items}
+        totalListings={paginated.total}
+        currentPage={paginated.page}
+        enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}
       />
     </>
   );
 }
-

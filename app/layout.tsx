@@ -1,12 +1,7 @@
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans, DM_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-import { ClientAppProvider } from '@/components/ClientAppProvider';
-import {
-  getCategoriesWithLiveCounts,
-  getCachedLocations,
-  getCachedSystemSettings,
-} from '@/server/cache/reference-data.cache';
+import { ChunkErrorRecovery } from '@/components/common/ChunkErrorRecovery';
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -50,36 +45,11 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic';
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  let initialServerData = undefined;
-  try {
-    const [categories, locations, settings] = await Promise.all([
-      getCategoriesWithLiveCounts().catch((err) => {
-        console.error('RootLayout categories fetch error:', err);
-        return undefined;
-      }),
-      getCachedLocations().catch((err) => {
-        console.error('RootLayout locations fetch error:', err);
-        return undefined;
-      }),
-      getCachedSystemSettings().catch((err) => {
-        console.error('RootLayout settings fetch error:', err);
-        return undefined;
-      }),
-    ]);
-    initialServerData = {
-      categories,
-      locations,
-      settings,
-    };
-  } catch (err) {
-    console.error('RootLayout initial data fetch error:', err);
-  }
-
   return (
     <html
       lang="en"
@@ -90,12 +60,12 @@ export default async function RootLayout({
         className="min-h-screen bg-[#f8f9fa] dark:bg-slate-950 text-[#202124] dark:text-slate-100 antialiased font-sans selection:bg-[#1dbf73] selection:text-white"
         suppressHydrationWarning
       >
-        <ClientAppProvider initialServerData={initialServerData}>
-          {children}
-        </ClientAppProvider>
+        <ChunkErrorRecovery />
+        {children}
       </body>
     </html>
   );
 }
+
 
 

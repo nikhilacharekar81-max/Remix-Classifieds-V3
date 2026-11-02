@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useRef, useEffect, useMemo, useId } from 'react';
-import { useApp } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContext';
+import { Category, LocationItem } from '@/lib/types';
 import {
   MapPin,
   Search,
@@ -12,10 +13,15 @@ import {
 } from 'lucide-react';
 import { navigateTo, useNavigationFeedback } from '@/lib/router/useRouter';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
+import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
 
 interface LocationSelectorInputProps {
   className?: string;
   currentCity?: string;
+  currentCategoryId?: string;
+  currentSubcategoryId?: string;
+  categories?: Category[];
+  locations?: LocationItem[];
 }
 
 // Popular locations for quick 1-tap select
@@ -34,24 +40,33 @@ const POPULAR_CITIES = [
 export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
   className = '',
   currentCity,
+  currentCategoryId,
+  currentSubcategoryId,
+  categories: propCategories,
+  locations: propLocations,
 }) => {
-  const {
-    selectedMarketplaceCity,
-    setSelectedMarketplaceCity,
-    selectedMarketplaceCategory,
-    selectedMarketplaceSubcategory,
-    categories,
-    locations,
-    fetchGpsLocation,
-    userLocation,
-    addToast,
-  } = useApp();
+  const app = useAppOptional();
+
+  const categories = useMemo(
+    () => propCategories ?? app?.categories ?? [],
+    [propCategories, app?.categories]
+  );
+  const locations = useMemo(
+    () => propLocations ?? app?.locations ?? [],
+    [propLocations, app?.locations]
+  );
+
+  const selectedMarketplaceCity = currentCity || app?.selectedMarketplaceCity || 'All India';
+  const selectedMarketplaceCategory =
+    currentCategoryId || app?.selectedMarketplaceCategory || 'all';
+  const selectedMarketplaceSubcategory =
+    currentSubcategoryId || app?.selectedMarketplaceSubcategory || 'all';
 
   const selectorId = useId();
   const { pendingLinkId, isSameUrlInProgress } = useNavigationFeedback();
   const isCityNavPending = pendingLinkId === `loc-${selectorId}`;
 
-  const displayCity = currentCity || selectedMarketplaceCity || 'All India';
+  const displayCity = selectedMarketplaceCity;
 
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,13 +95,12 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
   // Auto focus input on open
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         searchInputRef.current?.focus();
       }, 50);
-    } else if (searchQuery !== '') {
-      setSearchQuery('');
+      return () => clearTimeout(timer);
     }
-  }, [isOpen, searchQuery]);
+  }, [isOpen]);
 
   const states = useMemo(() => locations.filter((loc) => loc.type === 'state'), [locations]);
   const cities = useMemo(() => locations.filter((loc) => loc.type === 'city'), [locations]);
@@ -116,7 +130,7 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
       return;
     }
 
-    setSelectedMarketplaceCity(cityName);
+    app?.setSelectedMarketplaceCity(cityName);
     setIsOpen(false);
     setSearchQuery('');
     navigateTo(targetUrl, `loc-${selectorId}`);
@@ -124,17 +138,22 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
 
   const handleDetectLocation = () => {
     setIsDetectingGps(true);
-    fetchGpsLocation();
+    app?.fetchGpsLocation();
 
     setTimeout(() => {
       setIsDetectingGps(false);
-      const detectedCity = userLocation?.city || 'Mumbai';
+      const detectedCity = app?.userLocation?.city || 'Mumbai';
       handleSelectCity(detectedCity);
-      addToast({
-        type: 'success',
+      const toastPayload = {
+        type: 'success' as const,
         title: 'Location Updated',
         message: `Set marketplace location to ${detectedCity}.`,
-      });
+      };
+      if (app?.addToast) {
+        app.addToast(toastPayload);
+      } else {
+        dispatchPublicToast(toastPayload);
+      }
     }, 500);
   };
 
@@ -143,7 +162,11 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
       {/* Trigger Button */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          const next = !isOpen;
+          setIsOpen(next);
+          if (!next) setSearchQuery('');
+        }}
         className={`flex items-center gap-2 border-2 transition-all rounded-xl px-3 py-1.5 bg-white text-xs cursor-pointer select-none text-left ${
           isOpen
             ? 'border-blue-600 ring-2 ring-blue-100 shadow-sm'
@@ -322,4 +345,3 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
     </div>
   );
 };
-

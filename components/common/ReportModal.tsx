@@ -1,26 +1,27 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { useApp } from '@/context/AppContext';
+import React, { useState } from 'react';
+import { useAppOptional } from '@/context/AppContext';
+import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
 import { X, ShieldAlert, Send, AlertTriangle, Hash, UserCheck } from 'lucide-react';
 
-export const ReportModal: React.FC = () => {
-  const { reportModalConfig, closeReportModal, submitReport } = useApp();
+export interface ReportModalProps {
+  reportConfig?: { open: boolean; type: 'ad' | 'user'; targetId?: string } | null;
+  onClose?: () => void;
+}
 
-  const [targetType, setTargetType] = useState<'listing' | 'user'>('listing');
-  const [targetId, setTargetId] = useState<string>('');
+export const ReportModal: React.FC<ReportModalProps> = ({ reportConfig, onClose }) => {
+  const app = useAppOptional();
+
+  const activeConfig = reportConfig !== undefined ? reportConfig : app?.reportModalConfig || null;
+  const closeReportModal = onClose || app?.closeReportModal || (() => {});
+
+  const initialType: 'listing' | 'user' = activeConfig?.type === 'user' ? 'user' : 'listing';
+  const [targetType, setTargetType] = useState<'listing' | 'user'>(initialType);
+  const [targetId, setTargetId] = useState<string>(activeConfig?.targetId || '');
   const [reason, setReason] = useState<string>('Fraud / Advance Payment Scam');
   const [comments, setComments] = useState<string>('');
 
-  useEffect(() => {
-    if (reportModalConfig) {
-      const nextType = reportModalConfig.type === 'user' ? 'user' : 'listing';
-      const nextId = reportModalConfig.targetId || '';
-      if (nextType !== targetType) setTargetType(nextType);
-      if (nextId !== targetId) setTargetId(nextId);
-    }
-  }, [reportModalConfig, targetType, targetId]);
-
-  if (!reportModalConfig || !reportModalConfig.open) return null;
+  if (!activeConfig || !activeConfig.open) return null;
 
   const adReasons = [
     'Fraud / Advance Payment Scam',
@@ -47,16 +48,26 @@ export const ReportModal: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const cleanId = targetId.trim() || (targetType === 'listing' ? 'ad_unspecified' : 'usr_unspecified');
+    const cleanId =
+      targetId.trim() || (targetType === 'listing' ? 'ad_unspecified' : 'usr_unspecified');
     const displayTitle = targetType === 'listing' ? `Ad ID: ${cleanId}` : `User ID: ${cleanId}`;
 
-    submitReport({
-      targetType,
-      targetId: cleanId,
-      targetTitle: displayTitle,
-      reason,
-      comments,
-    });
+    if (app?.submitReport) {
+      app.submitReport({
+        targetType,
+        targetId: cleanId,
+        targetTitle: displayTitle,
+        reason,
+        comments,
+      });
+    } else {
+      dispatchPublicToast({
+        type: 'success',
+        title: 'Safety Report Submitted',
+        message: `Thank you. Our 24/7 Trust & Safety team has received your report for ${displayTitle}.`,
+      });
+      closeReportModal();
+    }
   };
 
   return (
@@ -73,7 +84,7 @@ export const ReportModal: React.FC = () => {
                 {targetType === 'listing' ? 'Report Suspicious Ad' : 'Report Fraudulent User'}
               </h2>
               <p className="text-[11px] text-slate-500">
-                Submit report to Chillyads 24/7 Moderation & Trust Team
+                Submit report to Chillyads 24/7 Moderation &amp; Trust Team
               </p>
             </div>
           </div>
@@ -122,7 +133,7 @@ export const ReportModal: React.FC = () => {
             </button>
           </div>
 
-          {/* Blank Text Input Field for Ad ID or User ID (NO DROPDOWN) */}
+          {/* Blank Text Input Field for Ad ID or User ID */}
           <div>
             <label className="block font-bold mb-1 text-slate-800 dark:text-slate-200">
               {targetType === 'listing' ? 'Enter Ad ID *' : 'Enter User ID *'}
@@ -189,7 +200,8 @@ export const ReportModal: React.FC = () => {
           <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800/50 flex items-start gap-2 text-amber-800 dark:text-amber-300 text-[11px]">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <p>
-              False reporting violates Chillyads Terms of Service. Reports are logged along with IP address for security.
+              False reporting violates Chillyads Terms of Service. Reports are logged along with IP
+              address for security.
             </p>
           </div>
 

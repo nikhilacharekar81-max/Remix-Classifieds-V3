@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Grid, List } from 'lucide-react';
 import { Listing, Category } from '@/lib/types';
 import { ListingGridCard } from './ListingGridCard';
@@ -10,19 +10,44 @@ export interface LatestAdsSectionProps {
   latestAds: Listing[];
   effectiveCity: string;
   categories: Category[];
-  latestAdsLayout: 'grid' | 'listicle';
-  onChangeLayout: (layout: 'grid' | 'listicle') => void;
-  getCategoryName: (catId?: string, subId?: string) => string;
+  latestAdsLayout?: 'grid' | 'listicle';
+  onChangeLayout?: (layout: 'grid' | 'listicle') => void;
+  getCategoryName?: (catId?: string, subId?: string) => string;
 }
 
 export const LatestAdsSection: React.FC<LatestAdsSectionProps> = ({
   latestAds,
   effectiveCity,
   categories,
-  latestAdsLayout,
+  latestAdsLayout: controlledLayout,
   onChangeLayout,
   getCategoryName,
 }) => {
+  const [localLayout, setLocalLayout] = useState<'grid' | 'listicle'>('grid');
+  const activeLayout = controlledLayout || localLayout;
+  const handleLayoutChange = (layout: 'grid' | 'listicle') => {
+    if (onChangeLayout) {
+      onChangeLayout(layout);
+    } else {
+      setLocalLayout(layout);
+    }
+  };
+
+  const resolveSubName = (catId?: string, subId?: string): string => {
+    if (getCategoryName) {
+      return getCategoryName(catId, subId);
+    }
+    if (subId) {
+      const sub = categories.find((c) => c.id === subId);
+      if (sub) return sub.name;
+    }
+    if (catId) {
+      const cat = categories.find((c) => c.id === catId);
+      if (cat) return cat.name;
+    }
+    return '';
+  };
+
   const isSpecificCity =
     effectiveCity !== 'All India' && effectiveCity !== 'All Cities';
 
@@ -45,9 +70,9 @@ export const LatestAdsSection: React.FC<LatestAdsSectionProps> = ({
         <div className="flex items-center border border-[#dadce0] rounded-lg p-0.5 bg-white">
           <button
             type="button"
-            onClick={() => onChangeLayout('grid')}
+            onClick={() => handleLayoutChange('grid')}
             className={`px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-              latestAdsLayout === 'grid'
+              activeLayout === 'grid'
                 ? 'bg-[#e6f4ea] text-[#137333]'
                 : 'text-[#5f6368] hover:text-[#202124]'
             }`}
@@ -57,9 +82,9 @@ export const LatestAdsSection: React.FC<LatestAdsSectionProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => onChangeLayout('listicle')}
+            onClick={() => handleLayoutChange('listicle')}
             className={`px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-              latestAdsLayout === 'listicle'
+              activeLayout === 'listicle'
                 ? 'bg-[#e6f4ea] text-[#137333]'
                 : 'text-[#5f6368] hover:text-[#202124]'
             }`}
@@ -74,15 +99,16 @@ export const LatestAdsSection: React.FC<LatestAdsSectionProps> = ({
         <div className="bg-white border border-[#dadce0] rounded-xl p-8 text-center text-[#5f6368]">
           <p className="text-xs font-semibold">No active ads posted in this city yet.</p>
         </div>
-      ) : latestAdsLayout === 'grid' ? (
+      ) : activeLayout === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {latestAds.map((listing) => (
+          {latestAds.map((listing, idx) => (
             <ListingGridCard
               key={listing.id}
               listing={listing}
               categories={categories}
-              subName={getCategoryName(listing.categoryId, listing.subcategoryId)}
+              subName={resolveSubName(listing.categoryId, listing.subcategoryId)}
               variant="latest"
+              priority={idx === 0}
             />
           ))}
         </div>
@@ -94,8 +120,9 @@ export const LatestAdsSection: React.FC<LatestAdsSectionProps> = ({
               listing={listing}
               rankNumber={idx + 1}
               categories={categories}
-              subName={getCategoryName(listing.categoryId, listing.subcategoryId)}
+              subName={resolveSubName(listing.categoryId, listing.subcategoryId)}
               variant="latest"
+              priority={idx === 0}
             />
           ))}
         </div>

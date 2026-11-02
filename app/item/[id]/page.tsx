@@ -1,10 +1,16 @@
 import { cache } from 'react';
-import { AppClientRouter } from '@/components/AppClientRouter';
+import { PublicListingDetailPage } from '@/components/marketplace/PublicListingDetailPage';
 import { listingRepository } from '@/server/repositories/listing.repository';
-import { getCachedCategoryHierarchy } from '@/server/cache/reference-data.cache';
+import {
+  getCategoriesWithLiveCounts,
+  getCachedLocations,
+  getCachedSystemSettings,
+} from '@/server/cache/reference-data.cache';
 import { buildChillyUrl, serializeJsonLd } from '@/lib/utils/seoAndUrlHelper';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
+
+export const dynamic = 'force-dynamic';
 
 const getListingById = cache(async (id: string) => {
   return listingRepository.findById(id);
@@ -18,7 +24,7 @@ export async function generateMetadata({
   const { id } = await params;
   const [listing, categories] = await Promise.all([
     getListingById(id),
-    getCachedCategoryHierarchy(),
+    getCategoriesWithLiveCounts(),
   ]);
 
   if (!listing || listing.status !== 'approved') {
@@ -57,7 +63,12 @@ export default async function ItemDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const listing = await getListingById(id);
+  const [listing, categories, locations, settings] = await Promise.all([
+    getListingById(id),
+    getCategoriesWithLiveCounts(),
+    getCachedLocations(),
+    getCachedSystemSettings(),
+  ]);
 
   if (!listing || listing.status !== 'approved') {
     notFound();
@@ -95,10 +106,12 @@ export default async function ItemDetailPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
-      <AppClientRouter
-        initialPath={`/item/${id}`}
-        initialListing={listing}
-        initialListings={relatedResult.items}
+      <PublicListingDetailPage
+        listing={listing}
+        relatedListings={relatedResult.items}
+        categories={categories}
+        locations={locations}
+        enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}
       />
     </>
   );

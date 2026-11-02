@@ -1,10 +1,10 @@
 'use client';
 import React, { useState } from 'react';
-import { useApp } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContext';
 import { Listing, PromotionalPackage } from '@/lib/types';
+import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
 import {
   Rocket,
-  Zap,
   CheckCircle2,
   Clock,
   ShieldCheck,
@@ -15,9 +15,50 @@ import {
   X,
   Sparkles,
   TrendingUp,
-  Award,
 } from 'lucide-react';
 import { isListingBoosted } from '@/lib/utils/boostHelper';
+
+const DEFAULT_BOOST_PACKAGES: PromotionalPackage[] = [
+  {
+    id: 'pkg_boost_1d',
+    name: '24-Hour Quick Top Boost',
+    badge: 'Quick Boost',
+    type: 'boost',
+    price: 99,
+    discountPrice: 149,
+    durationDays: 1,
+    durationHours: 24,
+    features: ['Top of Category Feed for 24h', 'Boosted Badge', '2x Buyer Views'],
+    isActive: true,
+    salesCount: 0,
+  },
+  {
+    id: 'pkg_boost_3d',
+    name: '3-Day Spotlight Top Boost',
+    type: 'boost',
+    price: 249,
+    discountPrice: 399,
+    durationDays: 3,
+    durationHours: 72,
+    badge: 'Most Popular',
+    features: ['Top of Category Feed for 3 Days', 'Priority Search Placement', '5x Buyer Views'],
+    isActive: true,
+    salesCount: 0,
+  },
+  {
+    id: 'pkg_boost_7d',
+    name: '7-Day Power Top Boost',
+    type: 'boost',
+    price: 499,
+    discountPrice: 799,
+    durationDays: 7,
+    durationHours: 168,
+    badge: 'Best Value',
+    features: ['Top of Category Feed for 7 Days', 'City-Wide Priority', '8x Buyer Views'],
+    isActive: true,
+    salesCount: 0,
+  },
+];
 
 interface BoostAdModalProps {
   listing: Listing;
@@ -32,14 +73,14 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
   onClose,
   onBoostSuccess,
 }) => {
-  const { packages, boostListing, addToast, currentUser } = useApp();
+  const app = useAppOptional();
 
-  // Filter active boost packages
-  const boostPackages = packages.filter(
+  const sourcePackages =
+    app?.packages && app.packages.length > 0 ? app.packages : DEFAULT_BOOST_PACKAGES;
+  const boostPackages = sourcePackages.filter(
     (p) => p.type === 'boost' && p.isActive !== false
   );
 
-  // Default selection to the second package (typically 3-day popular) or first
   const [selectedPackageId, setSelectedPackageId] = useState<string>(() => {
     return boostPackages[1]?.id || boostPackages[0]?.id || '';
   });
@@ -59,7 +100,6 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
   const taxAmount = Math.round(price * 0.18);
   const totalPayable = price + taxAmount;
 
-  // Overlap verification
   const isAlreadyBoosted = isListingBoosted(listing);
 
   const handleConfirmBoost = async () => {
@@ -79,19 +119,44 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const result = await boostListing(listing.id, selectedPackage.id, paymentMethod);
-
-      if (!result.success) {
-        setErrorMessage(result.message);
+      if (app?.boostListing) {
+        const result = await app.boostListing(listing.id, selectedPackage.id, paymentMethod);
+        if (!result.success) {
+          setErrorMessage(result.message);
+          setIsProcessing(false);
+          return;
+        }
+        setCompletedStep('success');
         setIsProcessing(false);
-        return;
-      }
-
-      setCompletedStep('success');
-      setIsProcessing(false);
-
-      if (result.listing && onBoostSuccess) {
-        onBoostSuccess(result.listing);
+        if (result.listing && onBoostSuccess) {
+          onBoostSuccess(result.listing);
+        }
+      } else {
+        const res = await fetch('/api/listings/boost', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            listingId: listing.id,
+            packageId: selectedPackage.id,
+            paymentMethod,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setErrorMessage(data.error || data.message || 'Unable to process boost request.');
+          setIsProcessing(false);
+          return;
+        }
+        setCompletedStep('success');
+        setIsProcessing(false);
+        dispatchPublicToast({
+          type: 'success',
+          title: 'Ad Boost Activated!',
+          message: `"${listing.title}" is now boosted to the top of category feeds.`,
+        });
+        if (data.data && onBoostSuccess) {
+          onBoostSuccess(data.data);
+        }
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Payment processing encountered an error. Please try again.');
@@ -113,7 +178,9 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
             </div>
             <div>
               <h3 className="font-extrabold text-base leading-tight">Boost Your Ad to Top</h3>
-              <p className="text-xs text-indigo-100">Appear at the top of category listings instantly</p>
+              <p className="text-xs text-indigo-100">
+                Appear at the top of category listings instantly
+              </p>
             </div>
           </div>
           <button
@@ -136,30 +203,39 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
                   Ad Successfully Boosted!
                 </h4>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-                  Your ad <span className="font-semibold text-slate-800 dark:text-slate-200">"{listing.title}"</span> is now elevated to the very top of search and category feeds.
+                  Your ad{' '}
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    &quot;{listing.title}&quot;
+                  </span>{' '}
+                  is now elevated to the very top of search and category feeds.
                 </p>
               </div>
 
-              {/* Boost Confirmation Receipt Card */}
               <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-left text-xs space-y-2 max-w-md mx-auto">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Selected Package:</span>
-                  <span className="font-bold text-slate-900 dark:text-white">{selectedPackage?.name}</span>
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {selectedPackage?.name}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Duration:</span>
                   <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                    {selectedPackage?.durationHours || (selectedPackage?.durationDays || 1) * 24} Hours Top Ranking
+                    {selectedPackage?.durationHours || (selectedPackage?.durationDays || 1) * 24}{' '}
+                    Hours Top Ranking
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Total Paid (incl. 18% GST):</span>
-                  <span className="font-black text-emerald-600 dark:text-emerald-400">₹{totalPayable}</span>
+                  <span className="font-black text-emerald-600 dark:text-emerald-400">
+                    ₹{totalPayable}
+                  </span>
                 </div>
                 <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2">
                   <span className="text-slate-500">Status:</span>
                   <span className="inline-flex items-center gap-1 font-bold text-emerald-600">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Active Now
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>{' '}
+                    Active Now
                   </span>
                 </div>
               </div>
@@ -175,7 +251,6 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
             </div>
           ) : (
             <>
-              {/* Target Ad Preview Card */}
               <div className="flex items-center gap-3.5 p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
                 <img
                   src={
@@ -205,15 +280,17 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
                 <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                   <div>
-                    <span className="font-bold">This listing is currently active with a top boost.</span>
+                    <span className="font-bold">
+                      This listing is currently active with a top boost.
+                    </span>
                     <p className="mt-0.5 text-[11px]">
-                      Boosts cannot overlap. You can purchase a new boost package once the current active period expires.
+                      Boosts cannot overlap. You can purchase a new boost package once the current
+                      active period expires.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Boost Packages Selection */}
               <div>
                 <div className="flex items-center justify-between mb-2.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -281,7 +358,6 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
                   })}
                 </div>
 
-                {/* Features of selected package */}
                 {selectedPackage && (
                   <div className="mt-3 p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-xl">
                     <span className="text-[11px] font-bold text-indigo-950 dark:text-indigo-200 block mb-1.5">
@@ -299,7 +375,6 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
                 )}
               </div>
 
-              {/* Payment Gateway Options */}
               <div>
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-2">
                   Select Payment Method
@@ -359,14 +434,13 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
                 )}
               </div>
 
-              {/* Price Calculation Summary */}
               <div className="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-3.5 border border-slate-200 dark:border-slate-700 text-xs space-y-1.5">
                 <div className="flex justify-between text-slate-600 dark:text-slate-400">
                   <span>Boost Package Base:</span>
                   <span className="font-semibold text-slate-900 dark:text-white">₹{price}</span>
                 </div>
                 <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>Goods & Service Tax (18% GST):</span>
+                  <span>Goods &amp; Service Tax (18% GST):</span>
                   <span>₹{taxAmount}</span>
                 </div>
                 <div className="flex justify-between text-sm font-black border-t border-slate-200 dark:border-slate-700 pt-2 text-slate-900 dark:text-white">
@@ -382,7 +456,6 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
                 </div>
               )}
 
-              {/* Confirm Pay Button */}
               <div className="pt-2">
                 <button
                   type="button"
@@ -400,7 +473,7 @@ export const BoostAdModal: React.FC<BoostAdModalProps> = ({
                   ) : (
                     <>
                       <Rocket className="w-4 h-4 text-amber-300" />
-                      <span>Pay ₹{totalPayable} & Boost Ad Now</span>
+                      <span>Pay ₹{totalPayable} &amp; Boost Ad Now</span>
                     </>
                   )}
                 </button>

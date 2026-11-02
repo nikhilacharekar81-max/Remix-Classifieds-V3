@@ -1,5 +1,8 @@
 import { AppClientRouter } from '@/components/AppClientRouter';
+import { getInitialServerDataForAppRouter } from '@/server/services/initialServerData';
 import type { Metadata } from 'next';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Admin Suite & Workspace | Classifieds V2',
@@ -15,7 +18,10 @@ export default async function AdminSubRoutePage({
 }: {
   params: Promise<{ slug?: string[] }>;
 }) {
-  const { slug } = await params;
+  const [{ slug }, initialServerData] = await Promise.all([
+    params,
+    getInitialServerDataForAppRouter(),
+  ]);
   const subPath = slug && slug.length > 0 ? `/admin/${slug.join('/')}` : '/admin';
-  return <AppClientRouter initialPath={subPath} />;
+  return <AppClientRouter initialPath={subPath} initialServerData={initialServerData} />;
 }

@@ -17,6 +17,10 @@ export interface NavigationFeedbackState {
 
 let activeNextRouter: ReturnType<typeof useNextRouter> | null = null;
 
+export function registerActiveNextRouter(router: ReturnType<typeof useNextRouter> | null) {
+  activeNextRouter = router;
+}
+
 let navFeedbackState: NavigationFeedbackState = {
   pendingUrl: null,
   pendingLinkId: null,

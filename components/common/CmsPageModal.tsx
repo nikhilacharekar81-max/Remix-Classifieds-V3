@@ -1,12 +1,35 @@
 'use client';
 import React from 'react';
-import { useApp } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContext';
+import { INITIAL_CMS_PAGES } from '@/lib/data/cmsPagesData';
+import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
 import { X, ShieldCheck, FileText, Calendar, Edit3, Share2, Printer } from 'lucide-react';
 import { Badge } from './Badge';
 import { navigateTo } from '@/lib/router/useRouter';
 
-export const CmsPageModal: React.FC = () => {
-  const { cmsPages, activeCmsPageSlug, closeCmsPageModal, addToast, setViewMode } = useApp();
+export interface CmsPageModalProps {
+  slug?: string | null;
+  onClose?: () => void;
+}
+
+export const CmsPageModal: React.FC<CmsPageModalProps> = ({ slug, onClose }) => {
+  const app = useAppOptional();
+
+  const cmsPages = app?.cmsPages || INITIAL_CMS_PAGES;
+  const activeCmsPageSlug = slug !== undefined ? slug : app?.activeCmsPageSlug || null;
+  const closeCmsPageModal = onClose || app?.closeCmsPageModal || (() => {});
+
+  const notifyToast = (toast: {
+    title: string;
+    message: string;
+    type: 'success' | 'info' | 'warning' | 'error';
+  }) => {
+    if (app?.addToast) {
+      app.addToast(toast);
+    } else {
+      dispatchPublicToast(toast);
+    }
+  };
 
   if (!activeCmsPageSlug) return null;
 
@@ -19,7 +42,9 @@ export const CmsPageModal: React.FC = () => {
           <FileText className="w-12 h-12 text-slate-400 mx-auto mb-3" />
           <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">Page Not Found</h3>
           <p className="text-xs text-slate-500 mb-4">
-            The requested page slug <code className="text-blue-600 font-mono">/{activeCmsPageSlug}</code> could not be located.
+            The requested page slug{' '}
+            <code className="text-blue-600 font-mono">/{activeCmsPageSlug}</code> could not be
+            located.
           </p>
           <button
             onClick={closeCmsPageModal}
@@ -35,7 +60,7 @@ export const CmsPageModal: React.FC = () => {
   const handleShare = () => {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(window.location.origin + '/' + page.slug);
-      addToast({
+      notifyToast({
         type: 'success',
         title: 'Link Copied',
         message: `Direct link to "${page.title}" copied to clipboard.`,
@@ -49,54 +74,8 @@ export const CmsPageModal: React.FC = () => {
 
   const handleEditInAdmin = () => {
     closeCmsPageModal();
-    setViewMode('admin');
+    app?.setViewMode?.('admin');
     navigateTo('/admin/cms');
-  };
-
-  // Helper parser for basic markdown formatting
-  const renderFormattedContent = (content: string) => {
-    const lines = content.split('\n');
-    return lines.map((line, idx) => {
-      const trimmed = line.trim();
-      if (!trimmed) return <div key={idx} className="h-2" />;
-
-      if (trimmed.startsWith('### ')) {
-        return (
-          <h3 key={idx} className="text-lg font-bold text-slate-900 dark:text-white mt-4 mb-2 pb-1 border-b border-slate-100 dark:border-slate-800">
-            {trimmed.replace('### ', '')}
-          </h3>
-        );
-      }
-      if (trimmed.startsWith('#### ')) {
-        return (
-          <h4 key={idx} className="text-sm font-bold text-slate-800 dark:text-slate-200 mt-3 mb-1.5 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block"></span>
-            {trimmed.replace('#### ', '')}
-          </h4>
-        );
-      }
-      if (trimmed.startsWith('- ')) {
-        const itemText = trimmed.replace('- ', '');
-        return (
-          <li key={idx} className="text-xs text-slate-600 dark:text-slate-300 ml-4 list-disc leading-relaxed my-0.5">
-            {renderBoldText(itemText)}
-          </li>
-        );
-      }
-      if (/^\d+\.\s/.test(trimmed)) {
-        return (
-          <div key={idx} className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-2 mb-1">
-            {renderBoldText(trimmed)}
-          </div>
-        );
-      }
-
-      return (
-        <p key={idx} className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed my-1.5">
-          {renderBoldText(trimmed)}
-        </p>
-      );
-    });
   };
 
   const renderBoldText = (text: string) => {
@@ -110,6 +89,63 @@ export const CmsPageModal: React.FC = () => {
         );
       }
       return part;
+    });
+  };
+
+  const renderFormattedContent = (content: string) => {
+    const lines = content.split('\n');
+    return lines.map((line, idx) => {
+      const trimmed = line.trim();
+      if (!trimmed) return <div key={idx} className="h-2" />;
+
+      if (trimmed.startsWith('### ')) {
+        return (
+          <h3
+            key={idx}
+            className="text-lg font-bold text-slate-900 dark:text-white mt-4 mb-2 pb-1 border-b border-slate-100 dark:border-slate-800"
+          >
+            {trimmed.replace('### ', '')}
+          </h3>
+        );
+      }
+      if (trimmed.startsWith('#### ')) {
+        return (
+          <h4
+            key={idx}
+            className="text-sm font-bold text-slate-800 dark:text-slate-200 mt-3 mb-1.5 flex items-center gap-1.5"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block"></span>
+            {trimmed.replace('#### ', '')}
+          </h4>
+        );
+      }
+      if (trimmed.startsWith('- ')) {
+        const itemText = trimmed.replace('- ', '');
+        return (
+          <li
+            key={idx}
+            className="text-xs text-slate-600 dark:text-slate-300 ml-4 list-disc leading-relaxed my-0.5"
+          >
+            {renderBoldText(itemText)}
+          </li>
+        );
+      }
+      if (/^\d+\.\s/.test(trimmed)) {
+        return (
+          <div
+            key={idx}
+            className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-2 mb-1"
+          >
+            {renderBoldText(trimmed)}
+          </div>
+        );
+      }
+
+      return (
+        <p key={idx} className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed my-1.5">
+          {renderBoldText(trimmed)}
+        </p>
+      );
     });
   };
 
@@ -166,7 +202,7 @@ export const CmsPageModal: React.FC = () => {
         <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
-            <span>Official Chillyads Platform Documentation & Policy</span>
+            <span>Official Chillyads Platform Documentation &amp; Policy</span>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">

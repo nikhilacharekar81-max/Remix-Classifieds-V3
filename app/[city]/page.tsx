@@ -2,12 +2,13 @@ import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import {
-  getCachedCategoryHierarchy,
+  getCategoriesWithLiveCounts,
   getCachedLocations,
+  getCachedSystemSettings,
 } from '@/server/cache/reference-data.cache';
 import { listingRepository } from '@/server/repositories/listing.repository';
 import { listingService } from '@/server/services/listing.service';
-import { AppClientRouter } from '@/components/AppClientRouter';
+import { PublicMarketplacePage } from '@/components/marketplace/PublicMarketplacePage';
 import { stripChillySuffixes, unslugifyCity, serializeJsonLd } from '@/lib/utils/seoAndUrlHelper';
 
 export const dynamic = 'force-dynamic';
@@ -19,9 +20,10 @@ interface CityPageProps {
 
 const getCityPageContext = cache(async (cityParam: string) => {
   const { cleanSlug } = stripChillySuffixes(cityParam);
-  const [locations, categories] = await Promise.all([
+  const [locations, categories, settings] = await Promise.all([
     getCachedLocations(),
-    getCachedCategoryHierarchy(),
+    getCategoriesWithLiveCounts(),
+    getCachedSystemSettings(),
   ]);
 
   const loc =
@@ -29,7 +31,7 @@ const getCityPageContext = cache(async (cityParam: string) => {
   const cat =
     categories.find((c) => c.slug === cleanSlug || c.slug === cityParam) ?? null;
 
-  return { cleanSlug, locations, loc, cat };
+  return { cleanSlug, locations, categories, settings, loc, cat };
 });
 
 export async function generateMetadata({ params, searchParams }: CityPageProps): Promise<Metadata> {
@@ -84,7 +86,7 @@ export default async function CityPage({ params, searchParams }: CityPageProps) 
     if (typeof v === 'string') cleanQuery[k] = v;
   }
 
-  const { cleanSlug, locations, loc, cat } = await getCityPageContext(city);
+  const { cleanSlug, locations, categories, settings, loc, cat } = await getCityPageContext(city);
 
   const isSpecialCity = cleanSlug === 'all-india' || cleanSlug === 'india' || cleanSlug === 'all';
   if (!loc && !cat && !isSpecialCity) {
@@ -125,12 +127,18 @@ export default async function CityPage({ params, searchParams }: CityPageProps) 
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
         />
-        <AppClientRouter
-          initialPath={`/${city}`}
-          initialQuery={cleanQuery}
-          initialListings={paginated.items}
-          initialTotalListings={paginated.total}
-          initialPage={paginated.page}
+        <PublicMarketplacePage
+          mode="listings"
+          effectiveCity="All India"
+          effectiveCategory={cat.parentId || cat.id}
+          effectiveSubcategory={cat.parentId ? cat.id : 'all'}
+          query={cleanQuery}
+          categories={categories}
+          locations={locations}
+          listings={paginated.items}
+          totalListings={paginated.total}
+          currentPage={paginated.page}
+          enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}
         />
       </>
     );
@@ -170,13 +178,16 @@ export default async function CityPage({ params, searchParams }: CityPageProps) 
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
-      <AppClientRouter
-        initialPath={`/${city}`}
-        initialQuery={cleanQuery}
-        initialListings={latestCityResult.items}
-        initialTotalListings={latestCityResult.total}
+      <PublicMarketplacePage
+        mode="directory"
+        effectiveCity={cityName}
+        query={cleanQuery}
+        categories={categories}
+        locations={locations}
+        listings={latestCityResult.items}
+        totalListings={latestCityResult.total}
+        enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}
       />
     </>
   );
 }
-

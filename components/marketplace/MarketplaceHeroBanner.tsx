@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Search, ChevronRight, Loader2 } from 'lucide-react';
 import { NavLink } from '@/components/common/NavLink';
 import { Category } from '@/lib/types';
@@ -9,8 +9,8 @@ import { navigateTo, useNavigationFeedback } from '@/lib/router/useRouter';
 
 export interface MarketplaceHeroBannerProps {
   effectiveCity: string;
-  effectiveSearch: string;
-  onSearchChange: (q: string) => void;
+  effectiveSearch?: string;
+  onSearchChange?: (q: string) => void;
   categories: Category[];
   totalDirectoryListings: number;
   rootCategoriesCount: number;
@@ -25,18 +25,28 @@ const POPULAR_TAGS = [
 
 export const MarketplaceHeroBanner: React.FC<MarketplaceHeroBannerProps> = ({
   effectiveCity,
-  effectiveSearch,
+  effectiveSearch = '',
   onSearchChange,
   categories,
   totalDirectoryListings,
   rootCategoriesCount,
 }) => {
+  const [localSearch, setLocalSearch] = useState(effectiveSearch);
+  const currentSearch = onSearchChange ? effectiveSearch : localSearch;
+  const handleSearchChange = (q: string) => {
+    if (onSearchChange) {
+      onSearchChange(q);
+    } else {
+      setLocalSearch(q);
+    }
+  };
+
   const { isUrlPending } = useNavigationFeedback();
   const isSpecificCity =
     Boolean(effectiveCity) &&
     effectiveCity !== 'All India' &&
     effectiveCity !== 'All Cities';
-  const searchUrl = `/search?q=${encodeURIComponent(effectiveSearch)}`;
+  const searchUrl = `/search?q=${encodeURIComponent(currentSearch)}`;
 
   return (
     <div className="relative rounded-2xl overflow-hidden bg-[#0a4226] text-white border border-[#1dbf73]/30 shadow-sm">
@@ -86,8 +96,8 @@ export const MarketplaceHeroBanner: React.FC<MarketplaceHeroBannerProps> = ({
             <Search className="w-4 h-4 text-[#5f6368] shrink-0" />
             <input
               type="text"
-              value={effectiveSearch}
-              onChange={(e) => onSearchChange(e.target.value)}
+              value={currentSearch}
+              onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   navigateTo(searchUrl);

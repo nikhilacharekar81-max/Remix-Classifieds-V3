@@ -1,15 +1,13 @@
-'use client';
-
 import React from 'react';
-import { Heart, Rocket, ChevronRight, Loader2 } from 'lucide-react';
+import { Rocket, ChevronRight } from 'lucide-react';
 import { Listing, Category, UserGeoLocation } from '@/lib/types';
 import { NavLink } from '@/components/common/NavLink';
 import { ImageWithFallback } from '@/components/common/ImageWithFallback';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
 import { calculateDistanceKm } from '@/lib/utils/distanceUtils';
 import { isListingBoosted } from '@/lib/utils/boostHelper';
-import { navigateTo, useNavigationFeedback } from '@/lib/router/useRouter';
 import { extractListingAttributeSummary, isRentalListing } from './ListingGridCard';
+import { FavoriteButton } from './FavoriteButton';
 
 export interface ListingListicleCardProps {
   listing: Listing;
@@ -19,6 +17,7 @@ export interface ListingListicleCardProps {
   userLocation?: UserGeoLocation | null;
   onSaveWatchlist?: (listing: Listing) => void;
   variant?: 'latest' | 'catalog';
+  priority?: boolean;
 }
 
 export const ListingListicleCard: React.FC<ListingListicleCardProps> = ({
@@ -29,10 +28,9 @@ export const ListingListicleCard: React.FC<ListingListicleCardProps> = ({
   userLocation,
   onSaveWatchlist,
   variant = 'catalog',
+  priority = false,
 }) => {
-  const { isUrlPending } = useNavigationFeedback();
   const listingUrl = buildChillyUrl({ listing, categories });
-  const isItemPending = isUrlPending(listingUrl);
   const sellerInitial = (listing.sellerName || 'S').charAt(0).toUpperCase();
 
   const distanceKm =
@@ -53,20 +51,20 @@ export const ListingListicleCard: React.FC<ListingListicleCardProps> = ({
   const boosted = variant === 'catalog' && isListingBoosted(listing);
 
   return (
-    <article
-      onClick={() => navigateTo(listingUrl)}
-      className="bg-white rounded-xl border border-[#dadce0] hover:border-[#1dbf73] p-3.5 sm:p-4 shadow-2xs hover:shadow-md transition-all cursor-pointer flex flex-col sm:flex-row items-start sm:items-center gap-4 group"
-    >
+    <article className="bg-white rounded-xl border border-[#dadce0] hover:border-[#1dbf73] p-3.5 sm:p-4 shadow-2xs hover:shadow-md transition-all cursor-pointer flex flex-col sm:flex-row items-start sm:items-center gap-4 group">
       {/* Listicle Rank Number */}
       <div className="hidden sm:flex w-8 h-8 rounded-lg bg-[#f8f9fa] border border-[#dadce0] text-[#5f6368] group-hover:border-[#1dbf73] group-hover:text-[#1dbf73] font-mono text-xs font-bold tabular-nums items-center justify-center shrink-0 transition-colors">
         {String(rankNumber).padStart(2, '0')}
       </div>
 
       {/* Thumbnail */}
-      <div
+      <NavLink
+        href={listingUrl}
+        showSpinner={false}
         className={`relative w-full ${
           variant === 'latest' ? 'sm:w-44 h-40 sm:h-28' : 'sm:w-48 h-44 sm:h-32'
-        } rounded-lg bg-[#f1f3f4] overflow-hidden shrink-0`}
+        } rounded-lg bg-[#f1f3f4] overflow-hidden shrink-0 block`}
+        aria-label={listing.title}
       >
         <ImageWithFallback
           src={
@@ -75,18 +73,19 @@ export const ListingListicleCard: React.FC<ListingListicleCardProps> = ({
           }
           alt={listing.title}
           categoryId={listing.categoryId}
+          priority={priority}
           className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
         />
         {boosted ? (
-          <div className="absolute top-2 left-2 bg-[#1a73e8] text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-xs flex items-center gap-1 uppercase tracking-wider">
+          <div className="absolute top-2 left-2 bg-[#1a73e8] text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-xs flex items-center gap-1 uppercase tracking-wider pointer-events-none">
             <Rocket className="w-3 h-3" /> Boosted
           </div>
         ) : listing.isFeatured ? (
-          <div className="absolute top-2 left-2 bg-[#202124]/90 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+          <div className="absolute top-2 left-2 bg-[#202124]/90 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider pointer-events-none">
             Featured
           </div>
         ) : null}
-      </div>
+      </NavLink>
 
       {/* Content Body */}
       <div className="flex-1 min-w-0 space-y-1.5">
@@ -128,12 +127,7 @@ export const ListingListicleCard: React.FC<ListingListicleCardProps> = ({
         </div>
 
         <h3 className="text-sm sm:text-base font-bold text-[#202124] group-hover:text-[#1dbf73] transition-colors line-clamp-1">
-          <NavLink
-            href={listingUrl}
-            showSpinner={false}
-            onClick={(e) => e.stopPropagation()}
-            className="hover:underline"
-          >
+          <NavLink href={listingUrl} className="hover:underline">
             {listing.title}
           </NavLink>
         </h3>
@@ -164,27 +158,20 @@ export const ListingListicleCard: React.FC<ListingListicleCardProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {variant === 'catalog' && onSaveWatchlist && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSaveWatchlist(listing);
-              }}
-              className="p-1.5 rounded-md border border-[#dadce0] text-[#5f6368] hover:text-[#ea4335] hover:bg-[#f8f9fa] transition-colors cursor-pointer"
-              title="Save to Watchlist"
-            >
-              <Heart className="w-4 h-4" />
-            </button>
+          {variant === 'catalog' && (
+            <FavoriteButton
+              listing={listing}
+              onSaveWatchlist={onSaveWatchlist}
+              variant="listicle"
+            />
           )}
-          <span className="px-3 py-1.5 rounded-md bg-[#f8f9fa] group-hover:bg-[#1dbf73] text-[#202124] group-hover:text-white border border-[#dadce0] group-hover:border-[#1dbf73] text-xs font-semibold transition-colors flex items-center gap-1">
+          <NavLink
+            href={listingUrl}
+            className="px-3 py-1.5 rounded-md bg-[#f8f9fa] group-hover:bg-[#1dbf73] text-[#202124] group-hover:text-white border border-[#dadce0] group-hover:border-[#1dbf73] text-xs font-semibold transition-colors flex items-center gap-1"
+          >
             <span>View Ad</span>
-            {isItemPending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5" />
-            )}
-          </span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </NavLink>
         </div>
       </div>
     </article>

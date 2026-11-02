@@ -1,5 +1,8 @@
 import { AppClientRouter } from '@/components/AppClientRouter';
+import { getInitialServerDataForAppRouter } from '@/server/services/initialServerData';
 import type { Metadata } from 'next';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Admin Suite & Control Center | Classifieds V2',
@@ -10,6 +13,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function AdminRootPage() {
-  return <AppClientRouter initialPath="/admin" />;
+export default async function AdminRootPage() {
+  const initialServerData = await getInitialServerDataForAppRouter();
+  return <AppClientRouter initialPath="/admin" initialServerData={initialServerData} />;
 }

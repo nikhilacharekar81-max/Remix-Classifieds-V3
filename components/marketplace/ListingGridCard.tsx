@@ -1,14 +1,12 @@
-'use client';
-
 import React from 'react';
-import { Heart, Rocket, Loader2 } from 'lucide-react';
+import { Rocket } from 'lucide-react';
 import { Listing, Category, UserGeoLocation } from '@/lib/types';
 import { NavLink } from '@/components/common/NavLink';
 import { ImageWithFallback } from '@/components/common/ImageWithFallback';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
 import { calculateDistanceKm } from '@/lib/utils/distanceUtils';
 import { isListingBoosted } from '@/lib/utils/boostHelper';
-import { navigateTo, useNavigationFeedback } from '@/lib/router/useRouter';
+import { FavoriteButton } from './FavoriteButton';
 
 export interface ListingGridCardProps {
   listing: Listing;
@@ -17,6 +15,7 @@ export interface ListingGridCardProps {
   userLocation?: UserGeoLocation | null;
   onSaveWatchlist?: (listing: Listing) => void;
   variant?: 'latest' | 'catalog';
+  priority?: boolean;
 }
 
 export function extractListingAttributeSummary(listing: Listing, maxItems = 3): string[] {
@@ -52,10 +51,9 @@ export const ListingGridCard: React.FC<ListingGridCardProps> = ({
   userLocation,
   onSaveWatchlist,
   variant = 'catalog',
+  priority = false,
 }) => {
-  const { isUrlPending } = useNavigationFeedback();
   const listingUrl = buildChillyUrl({ listing, categories });
-  const isItemPending = isUrlPending(listingUrl);
   const sellerInitial = (listing.sellerName || 'S').charAt(0).toUpperCase();
 
   const distanceKm =
@@ -76,41 +74,41 @@ export const ListingGridCard: React.FC<ListingGridCardProps> = ({
   const boosted = variant === 'catalog' && isListingBoosted(listing);
 
   return (
-    <article
-      onClick={() => navigateTo(listingUrl)}
-      className="bg-white rounded-xl border border-[#dadce0] hover:border-[#1dbf73] overflow-hidden shadow-2xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group relative"
-    >
+    <article className="bg-white rounded-xl border border-[#dadce0] hover:border-[#1dbf73] overflow-hidden shadow-2xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group relative">
       <div className="relative aspect-[4/3] bg-[#f1f3f4] overflow-hidden">
-        <ImageWithFallback
-          src={
-            listing.images[0] ||
-            'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=600&auto=format&fit=crop&q=80'
-          }
-          alt={listing.title}
-          categoryId={listing.categoryId}
-          className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
-        />
+        <NavLink
+          href={listingUrl}
+          showSpinner={false}
+          className="block w-full h-full"
+          aria-label={listing.title}
+        >
+          <ImageWithFallback
+            src={
+              listing.images[0] ||
+              'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=600&auto=format&fit=crop&q=80'
+            }
+            alt={listing.title}
+            categoryId={listing.categoryId}
+            priority={priority}
+            className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+          />
+        </NavLink>
         {boosted ? (
-          <div className="absolute top-2.5 left-2.5 bg-[#1a73e8] text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-xs flex items-center gap-1 uppercase tracking-wider z-10">
+          <div className="absolute top-2.5 left-2.5 bg-[#1a73e8] text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-xs flex items-center gap-1 uppercase tracking-wider z-10 pointer-events-none">
             <Rocket className="w-3 h-3" /> Boosted
           </div>
         ) : listing.isFeatured ? (
-          <div className="absolute top-2.5 left-2.5 bg-[#202124]/90 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+          <div className="absolute top-2.5 left-2.5 bg-[#202124]/90 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider pointer-events-none">
             Featured
           </div>
         ) : null}
 
-        {variant === 'catalog' && onSaveWatchlist && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSaveWatchlist(listing);
-            }}
-            className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-white/90 hover:bg-white text-[#5f6368] hover:text-[#ea4335] transition-colors shadow-xs cursor-pointer"
-          >
-            <Heart className="w-4 h-4" />
-          </button>
+        {variant === 'catalog' && (
+          <FavoriteButton
+            listing={listing}
+            onSaveWatchlist={onSaveWatchlist}
+            variant="grid"
+          />
         )}
       </div>
 
@@ -126,9 +124,7 @@ export const ListingGridCard: React.FC<ListingGridCardProps> = ({
                 {listing.sellerName || 'Verified Seller'}
               </span>
             </div>
-            {isItemPending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#1dbf73] shrink-0" />
-            ) : variant === 'latest' ? (
+            {variant === 'latest' ? (
               <span className="text-[10px] font-semibold text-[#1dbf73] shrink-0">Verified</span>
             ) : (
               <span className="text-[10px] text-[#5f6368] truncate shrink-0">
@@ -142,12 +138,7 @@ export const ListingGridCard: React.FC<ListingGridCardProps> = ({
             className="text-xs font-medium text-[#202124] group-hover:text-[#1dbf73] line-clamp-2 leading-snug transition-colors"
             title={listing.title}
           >
-            <NavLink
-              href={listingUrl}
-              showSpinner={false}
-              onClick={(e) => e.stopPropagation()}
-              className="hover:underline"
-            >
+            <NavLink href={listingUrl} className="hover:underline">
               {listing.title}
             </NavLink>
           </h3>
@@ -175,7 +166,11 @@ export const ListingGridCard: React.FC<ListingGridCardProps> = ({
         </div>
 
         {/* Price Footer */}
-        <div className="pt-2.5 border-t border-[#f1f3f4] flex items-baseline justify-between gap-2 mt-auto">
+        <NavLink
+          href={listingUrl}
+          showSpinner={false}
+          className="pt-2.5 border-t border-[#f1f3f4] flex items-baseline justify-between gap-2 mt-auto"
+        >
           <span className="text-[10px] font-bold uppercase tracking-wider text-[#5f6368]">
             {isRental ? 'Monthly' : 'Price'}
           </span>
@@ -183,7 +178,7 @@ export const ListingGridCard: React.FC<ListingGridCardProps> = ({
             ₹{listing.price.toLocaleString('en-IN')}
             {isRental && <span className="text-[11px] font-normal text-[#5f6368]">/mo</span>}
           </div>
-        </div>
+        </NavLink>
       </div>
     </article>
   );

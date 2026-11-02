@@ -30,7 +30,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Category } from '@/lib/types';
-import { useApp } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContext';
 import { useNavigationFeedback } from '@/lib/router/useRouter';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
 import { NavLink } from '@/components/common/NavLink';
@@ -157,7 +157,8 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
   variant = 'marketplace',
   className = '',
 }) => {
-  const { listings } = useApp();
+  const app = useAppOptional();
+  const listings = app?.listings;
   const { isUrlPending } = useNavigationFeedback();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
@@ -187,17 +188,27 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
     const subMap: Record<string, number> = {};
     const parentMap: Record<string, number> = {};
 
-    listings.forEach((lst) => {
-      if (lst.status === 'approved') {
-        parentMap[lst.categoryId] = (parentMap[lst.categoryId] || 0) + 1;
-        if (lst.subcategoryId) {
-          subMap[lst.subcategoryId] = (subMap[lst.subcategoryId] || 0) + 1;
+    if (listings && listings.length > 0) {
+      listings.forEach((lst) => {
+        if (lst.status === 'approved') {
+          parentMap[lst.categoryId] = (parentMap[lst.categoryId] || 0) + 1;
+          if (lst.subcategoryId) {
+            subMap[lst.subcategoryId] = (subMap[lst.subcategoryId] || 0) + 1;
+          }
         }
-      }
-    });
+      });
+    } else {
+      categories.forEach((cat) => {
+        if (cat.parentId) {
+          subMap[cat.id] = cat.listingCount || 0;
+        } else {
+          parentMap[cat.id] = cat.listingCount || 0;
+        }
+      });
+    }
 
     return { subMap, parentMap };
-  }, [listings]);
+  }, [listings, categories]);
 
   // Filter categories and subcategories based on search query and active quick filter
   const filteredData = useMemo(() => {

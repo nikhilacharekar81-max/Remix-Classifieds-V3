@@ -15,23 +15,19 @@ import {
   MapPin,
   Loader2,
 } from 'lucide-react';
-import { useApp } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContext';
+import { UserAccount } from '@/lib/types';
 import { NavLink } from '@/components/common/NavLink';
 import { useNavigationFeedback } from '@/lib/router/useRouter';
+import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
 
 export const MyAccountDropdown: React.FC = () => {
-  const {
-    currentUser,
-    authUser,
-    setAuthUser,
-    setCurrentUserId,
-    signOut,
-    addToast,
-    registerUser,
-  } = useApp();
+  const app = useAppOptional();
   const { isUrlPending } = useNavigationFeedback();
 
   const [isOpen, setIsOpen] = useState(false);
+  const [localAuthUser, setLocalAuthUser] = useState<UserAccount | null>(null);
+  const [hasCheckedSession, setHasCheckedSession] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -49,6 +45,18 @@ export const MyAccountDropdown: React.FC = () => {
   const [signUpState, setSignUpState] = useState('Maharashtra');
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const notify = (payload: {
+    type: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message?: string;
+  }) => {
+    if (app?.addToast) {
+      app.addToast(payload);
+    } else {
+      dispatchPublicToast(payload);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -68,6 +76,22 @@ export const MyAccountDropdown: React.FC = () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  const handleToggleMenu = () => {
+    const nextOpen = !isOpen;
+    setIsOpen(nextOpen);
+    if (nextOpen && !app && !hasCheckedSession) {
+      setHasCheckedSession(true);
+      fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.authenticated && data?.user) {
+            setLocalAuthUser(data.user);
+          }
+        })
+        .catch(() => {});
+    }
+  };
 
   const openModal = (mode: 'signin' | 'signup') => {
     setIsOpen(false);
@@ -107,10 +131,12 @@ export const MyAccountDropdown: React.FC = () => {
       }
 
       if (data.user) {
-        setAuthUser(data.user);
-        setCurrentUserId(data.user.id);
+        setLocalAuthUser(data.user);
+        setHasCheckedSession(true);
+        app?.setAuthUser(data.user);
+        app?.setCurrentUserId(data.user.id);
       }
-      addToast({
+      notify({
         type: 'success',
         title: 'Signed In Successfully',
         message: `Welcome back, ${data.user?.name || signInEmail.trim()}!`,
@@ -159,10 +185,12 @@ export const MyAccountDropdown: React.FC = () => {
       }
 
       if (data.user) {
-        setAuthUser(data.user);
-        setCurrentUserId(data.user.id);
-      } else {
-        const fallbackUser = registerUser({
+        setLocalAuthUser(data.user);
+        setHasCheckedSession(true);
+        app?.setAuthUser(data.user);
+        app?.setCurrentUserId(data.user.id);
+      } else if (app?.registerUser) {
+        const fallbackUser = app.registerUser({
           name: signUpName.trim(),
           email: signUpEmail.trim(),
           phone: signUpPhone.trim(),
@@ -171,11 +199,12 @@ export const MyAccountDropdown: React.FC = () => {
             state: signUpState.trim() || 'Maharashtra',
           },
         });
-        setAuthUser(fallbackUser);
-        setCurrentUserId(fallbackUser.id);
+        setLocalAuthUser(fallbackUser);
+        app.setAuthUser(fallbackUser);
+        app.setCurrentUserId(fallbackUser.id);
       }
 
-      addToast({
+      notify({
         type: 'success',
         title: 'Account Created',
         message: `Welcome to Chillyads, ${signUpName.trim()}!`,
@@ -192,6 +221,27 @@ export const MyAccountDropdown: React.FC = () => {
     }
   };
 
+  const handleSignOutClick = async () => {
+    setIsOpen(false);
+    setLocalAuthUser(null);
+    if (app?.signOut) {
+      await app.signOut();
+      return;
+    }
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      // ignore error
+    }
+    notify({
+      type: 'info',
+      title: 'Signed Out',
+      message: 'You have been signed out of your account.',
+    });
+  };
+
+  const effectiveAuthUser = app?.authUser || localAuthUser;
+  const effectiveCurrentUser = app?.currentUser || localAuthUser;
   const isAccountUrlPending = isUrlPending('/my-account');
 
   return (
@@ -199,7 +249,7 @@ export const MyAccountDropdown: React.FC = () => {
       <div className="relative" ref={dropdownRef}>
         <button
           type="button"
-          onClick={() => setIsOpen((prev) => !prev)}
+          onClick={handleToggleMenu}
           aria-expanded={isOpen}
           aria-haspopup="menu"
           className="px-3 py-2 text-[#3c4043] hover:text-[#202124] font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer rounded-md hover:bg-[#f1f3f4] border border-transparent hover:border-[#dadce0]"
@@ -226,10 +276,10 @@ export const MyAccountDropdown: React.FC = () => {
             {/* Active User Info Header */}
             <div className="px-3.5 py-2.5 border-b border-[#f1f3f4]">
               <p className="text-xs font-bold text-[#202124] truncate">
-                {authUser ? authUser.name : currentUser?.name || 'Guest User'}
+                {effectiveAuthUser ? effectiveAuthUser.name : effectiveCurrentUser?.name || 'Guest User'}
               </p>
               <p className="text-[11px] text-[#5f6368] truncate">
-                {authUser ? authUser.email : currentUser?.email || 'Manage your classifieds'}
+                {effectiveAuthUser ? effectiveAuthUser.email : effectiveCurrentUser?.email || 'Manage your classifieds'}
               </p>
             </div>
 
@@ -270,8 +320,7 @@ export const MyAccountDropdown: React.FC = () => {
                 type="button"
                 role="menuitem"
                 onClick={() => {
-                  setIsOpen(false);
-                  void signOut();
+                  void handleSignOutClick();
                 }}
                 className="w-full px-3.5 py-2 text-left text-xs font-semibold text-[#d93025] hover:bg-[#fce8e6]/50 flex items-center gap-2.5 transition-colors cursor-pointer"
               >

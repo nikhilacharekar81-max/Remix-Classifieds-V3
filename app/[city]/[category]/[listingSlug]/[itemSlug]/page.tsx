@@ -1,8 +1,15 @@
 import type { Metadata } from 'next';
 import { listingRepository } from '@/server/repositories/listing.repository';
-import { stripChillySuffixes } from '@/lib/utils/seoAndUrlHelper';
-import { AppClientRouter } from '@/components/AppClientRouter';
+import {
+  getCategoriesWithLiveCounts,
+  getCachedLocations,
+  getCachedSystemSettings,
+} from '@/server/cache/reference-data.cache';
+import { stripChillySuffixes, serializeJsonLd } from '@/lib/utils/seoAndUrlHelper';
+import { PublicListingDetailPage } from '@/components/marketplace/PublicListingDetailPage';
 import { notFound } from 'next/navigation';
+
+export const dynamic = 'force-dynamic';
 
 interface FourSegmentListingPageProps {
   params: Promise<{
@@ -60,14 +67,19 @@ export async function generateMetadata({ params }: FourSegmentListingPageProps):
 }
 
 export default async function FourSegmentListingPage({ params }: FourSegmentListingPageProps) {
-  const { city, category, listingSlug, itemSlug } = await params;
+  const { itemSlug } = await params;
   const { itemId } = stripChillySuffixes(itemSlug);
 
   if (!itemId) {
     notFound();
   }
 
-  const listing = await listingRepository.findById(itemId);
+  const [listing, categories, locations, settings] = await Promise.all([
+    listingRepository.findById(itemId),
+    getCategoriesWithLiveCounts(),
+    getCachedLocations(),
+    getCachedSystemSettings(),
+  ]);
 
   if (!listing || listing.status !== 'approved') {
     notFound();
@@ -103,12 +115,14 @@ export default async function FourSegmentListingPage({ params }: FourSegmentList
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
-      <AppClientRouter
-        initialPath={`/${city}/${category}/${listingSlug}/${itemSlug}`}
-        initialListing={listing}
-        initialListings={relatedResult.items}
+      <PublicListingDetailPage
+        listing={listing}
+        relatedListings={relatedResult.items}
+        categories={categories}
+        locations={locations}
+        enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}
       />
     </>
   );

@@ -22,6 +22,7 @@ interface ImageWithFallbackProps {
   categoryId?: string;
   className?: string;
   style?: React.CSSProperties;
+  priority?: boolean;
 }
 
 // Map categories to beautiful design styles and icons
@@ -73,7 +74,8 @@ export const ImageWithFallback: React.FC<ImageWithFallbackProps> = ({
   alt,
   categoryId = 'all',
   className = '',
-  style
+  style,
+  priority = false,
 }) => {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
@@ -107,6 +109,9 @@ export const ImageWithFallback: React.FC<ImageWithFallbackProps> = ({
       src={src}
       alt={alt}
       referrerPolicy="no-referrer"
+      loading={priority ? 'eager' : 'lazy'}
+      fetchPriority={priority ? 'high' : 'auto'}
+      decoding="async"
       onError={() => setFailedSrc(src)}
       className={className}
       style={style}

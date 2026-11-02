@@ -1,36 +1,58 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { useApp } from '@/context/AppContext';
-import { X, ShieldCheck, Cookie, Lock, BarChart2, Radio, Check, Sliders, Info, ShieldAlert } from 'lucide-react';
+import React, { useState } from 'react';
+import { useAppOptional } from '@/context/AppContext';
+import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
+import { X, Cookie, Lock, BarChart2, Radio, Sliders, Info } from 'lucide-react';
 
-export const CmpConsentModal: React.FC = () => {
-  const { isCmpModalOpen, closeCmpModal, addToast } = useApp();
+export interface CmpConsentModalProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
 
-  const [preferences, setPreferences] = useState({
-    essential: true, // Always required
-    analytics: true,
-    advertising: true, // Google AdSense & DoubleClick DART
-    functional: true,
-  });
-
-  const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'vendors'>('overview');
-
-  useEffect(() => {
-    if (!isCmpModalOpen) return;
-    const saved = localStorage.getItem('chilly_cmp_consent');
-    if (saved) {
-      try {
+function getInitialCmpPreferences() {
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = window.localStorage.getItem('chilly_cmp_consent');
+      if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.categories) {
-          setPreferences(parsed.categories);
+          return parsed.categories;
         }
-      } catch (e) {
-        // ignore error
       }
+    } catch {
+      // ignore
     }
-  }, [isCmpModalOpen]);
+  }
+  return {
+    essential: true,
+    analytics: true,
+    advertising: true,
+    functional: true,
+  };
+}
+
+export const CmpConsentModal: React.FC<CmpConsentModalProps> = ({ isOpen, onClose }) => {
+  const app = useAppOptional();
+
+  const isCmpModalOpen = isOpen !== undefined ? isOpen : app?.isCmpModalOpen || false;
+  const closeCmpModal = onClose || app?.closeCmpModal || (() => {});
+
+  const [preferences, setPreferences] = useState(getInitialCmpPreferences);
+  const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'vendors'>('overview');
 
   if (!isCmpModalOpen) return null;
+
+  const notifyToast = (toast: {
+    title: string;
+    message: string;
+    type: 'success' | 'info' | 'warning' | 'error';
+  }) => {
+    if (app?.addToast) {
+      app.addToast(toast);
+    } else {
+      dispatchPublicToast(toast);
+    }
+  };
 
   const handleSavePreferences = (customPreferences = preferences) => {
     const consentPayload = {
@@ -52,20 +74,19 @@ export const CmpConsentModal: React.FC = () => {
 
     localStorage.setItem('chilly_cmp_consent', JSON.stringify(consentPayload));
 
-    // Update us_privacy signal if ad consent is toggled off
     if (!customPreferences.advertising) {
       localStorage.setItem('us_privacy', '1YYY');
     } else {
       localStorage.setItem('us_privacy', '1YNN');
     }
 
-    // Trigger window custom event for ad tags and Google Analytics
     window.dispatchEvent(new CustomEvent('cmp_consent_updated', { detail: consentPayload }));
 
-    addToast({
+    notifyToast({
       type: 'success',
       title: 'Privacy Preferences Saved',
-      message: 'Your cookie consent choices have been updated across all ad partners and analytics tags.',
+      message:
+        'Your cookie consent choices have been updated across all ad partners and analytics tags.',
     });
 
     closeCmpModal();
@@ -78,7 +99,12 @@ export const CmpConsentModal: React.FC = () => {
   };
 
   const handleRejectOptional = () => {
-    const essentialOnly = { essential: true, analytics: false, advertising: false, functional: false };
+    const essentialOnly = {
+      essential: true,
+      analytics: false,
+      advertising: false,
+      functional: false,
+    };
     setPreferences(essentialOnly);
     handleSavePreferences(essentialOnly);
   };
@@ -95,7 +121,7 @@ export const CmpConsentModal: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                  Privacy Settings & Cookie Preferences
+                  Privacy Settings &amp; Cookie Preferences
                 </h2>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 uppercase">
                   IAB TCF v2.2 Certified
@@ -145,7 +171,7 @@ export const CmpConsentModal: React.FC = () => {
                 : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            Ad Vendors & Partners
+            Ad Vendors &amp; Partners
           </button>
         </div>
 
@@ -154,7 +180,8 @@ export const CmpConsentModal: React.FC = () => {
           {activeTab === 'overview' && (
             <div className="space-y-3 leading-relaxed">
               <p>
-                We use cookies and Google Certified Consent Management technology (IAB TCF v2.2 framework) to ensure our classified marketplace remains safe, fast, and transparent.
+                We use cookies and Google Certified Consent Management technology (IAB TCF v2.2
+                framework) to ensure our classified marketplace remains safe, fast, and transparent.
               </p>
 
               <div className="p-3.5 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-800/60 flex items-start gap-3">
@@ -162,7 +189,9 @@ export const CmpConsentModal: React.FC = () => {
                 <div className="text-[11px] text-blue-900 dark:text-blue-200 space-y-1">
                   <p className="font-bold">Google Certified Publisher Guarantee</p>
                   <p>
-                    For visitors in the EU/EEA, UK, and US, you can customize or revoke your advertising consent at any time. Changes take effect immediately across all third-party ad networks including Google AdSense and DoubleClick DART cookies.
+                    For visitors in the EU/EEA, UK, and US, you can customize or revoke your
+                    advertising consent at any time. Changes take effect immediately across all
+                    third-party ad networks including Google AdSense and DoubleClick DART cookies.
                   </p>
                 </div>
               </div>
@@ -174,7 +203,8 @@ export const CmpConsentModal: React.FC = () => {
                     <span>Essential Security</span>
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Required for user authentication, fraud prevention, and session stability. Cannot be disabled.
+                    Required for user authentication, fraud prevention, and session stability.
+                    Cannot be disabled.
                   </p>
                 </div>
 
@@ -184,7 +214,8 @@ export const CmpConsentModal: React.FC = () => {
                     <span>Personalized Ads</span>
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Controls tailored classified recommendations and Google AdSense partner networks.
+                    Controls tailored classified recommendations and Google AdSense partner
+                    networks.
                   </p>
                 </div>
               </div>
@@ -198,10 +229,11 @@ export const CmpConsentModal: React.FC = () => {
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
                     <Lock className="w-4 h-4 text-emerald-500" />
-                    <span>1. Strictly Necessary & Security Cookies</span>
+                    <span>1. Strictly Necessary &amp; Security Cookies</span>
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Enables login sessions, listing search filters, and anti-spam moderation. Always active.
+                    Enables login sessions, listing search filters, and anti-spam moderation. Always
+                    active.
                   </p>
                 </div>
                 <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 text-[10px] font-bold rounded-lg shrink-0">
@@ -214,7 +246,7 @@ export const CmpConsentModal: React.FC = () => {
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
                     <BarChart2 className="w-4 h-4 text-blue-500" />
-                    <span>2. Performance & Analytics Cookies</span>
+                    <span>2. Performance &amp; Analytics Cookies</span>
                   </div>
                   <p className="text-[11px] text-slate-500">
                     Measures website traffic, popular category page views, and search performance.
@@ -224,7 +256,9 @@ export const CmpConsentModal: React.FC = () => {
                   <input
                     type="checkbox"
                     checked={preferences.analytics}
-                    onChange={(e) => setPreferences({ ...preferences, analytics: e.target.checked })}
+                    onChange={(e) =>
+                      setPreferences({ ...preferences, analytics: e.target.checked })
+                    }
                     className="sr-only peer"
                   />
                   <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-slate-600 peer-checked:bg-blue-600"></div>
@@ -236,17 +270,20 @@ export const CmpConsentModal: React.FC = () => {
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
                     <Radio className="w-4 h-4 text-purple-500" />
-                    <span>3. Targeted Advertising & DoubleClick Cookies</span>
+                    <span>3. Targeted Advertising &amp; DoubleClick Cookies</span>
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Allows Google AdSense, DoubleClick DART, and certified partners to serve contextual ads based on relevant search intent.
+                    Allows Google AdSense, DoubleClick DART, and certified partners to serve
+                    contextual ads based on relevant search intent.
                   </p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0">
                   <input
                     type="checkbox"
                     checked={preferences.advertising}
-                    onChange={(e) => setPreferences({ ...preferences, advertising: e.target.checked })}
+                    onChange={(e) =>
+                      setPreferences({ ...preferences, advertising: e.target.checked })
+                    }
                     className="sr-only peer"
                   />
                   <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-slate-600 peer-checked:bg-blue-600"></div>
@@ -258,17 +295,20 @@ export const CmpConsentModal: React.FC = () => {
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
                     <Sliders className="w-4 h-4 text-amber-500" />
-                    <span>4. Functional & City Locality Preferences</span>
+                    <span>4. Functional &amp; City Locality Preferences</span>
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Remembers your last selected marketplace city, recent search keywords, and dark mode theme settings.
+                    Remembers your last selected marketplace city, recent search keywords, and dark
+                    mode theme settings.
                   </p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0">
                   <input
                     type="checkbox"
                     checked={preferences.functional}
-                    onChange={(e) => setPreferences({ ...preferences, functional: e.target.checked })}
+                    onChange={(e) =>
+                      setPreferences({ ...preferences, functional: e.target.checked })
+                    }
                     className="sr-only peer"
                   />
                   <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-slate-600 peer-checked:bg-blue-600"></div>
@@ -280,14 +320,19 @@ export const CmpConsentModal: React.FC = () => {
           {activeTab === 'vendors' && (
             <div className="space-y-3">
               <p className="text-[11px] text-slate-500">
-                Chillyads integrates with IAB TCF v2.2 certified vendor partners. Below are primary verified ad infrastructure providers:
+                Chillyads integrates with IAB TCF v2.2 certified vendor partners. Below are primary
+                verified ad infrastructure providers:
               </p>
 
               <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between">
                   <div>
-                    <span className="font-bold text-slate-900 dark:text-white block">Google Advertising Products</span>
-                    <span className="text-[10px] text-slate-400">Vendor ID: 752 • AdSense, DoubleClick DART, Google Tag Manager</span>
+                    <span className="font-bold text-slate-900 dark:text-white block">
+                      Google Advertising Products
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      Vendor ID: 752 • AdSense, DoubleClick DART, Google Tag Manager
+                    </span>
                   </div>
                   <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-[10px] font-semibold rounded">
                     Certified CMP
@@ -296,8 +341,12 @@ export const CmpConsentModal: React.FC = () => {
 
                 <div className="p-3 bg-white dark:bg-slate-900 flex items-center justify-between">
                   <div>
-                    <span className="font-bold text-slate-900 dark:text-white block">Amazon Advertising Systems</span>
-                    <span className="text-[10px] text-slate-400">Vendor ID: 128 • Contextual Sponsored Listings</span>
+                    <span className="font-bold text-slate-900 dark:text-white block">
+                      Amazon Advertising Systems
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      Vendor ID: 128 • Contextual Sponsored Listings
+                    </span>
                   </div>
                   <span className="px-2 py-0.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-[10px] font-semibold rounded">
                     TCF v2.2 Registered
@@ -306,8 +355,12 @@ export const CmpConsentModal: React.FC = () => {
 
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between">
                   <div>
-                    <span className="font-bold text-slate-900 dark:text-white block">Index Exchange & Criteo</span>
-                    <span className="text-[10px] text-slate-400">Vendor ID: 10 • Programmatic Header Bidding</span>
+                    <span className="font-bold text-slate-900 dark:text-white block">
+                      Index Exchange &amp; Criteo
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      Vendor ID: 10 • Programmatic Header Bidding
+                    </span>
                   </div>
                   <span className="px-2 py-0.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-[10px] font-semibold rounded">
                     TCF v2.2 Registered
