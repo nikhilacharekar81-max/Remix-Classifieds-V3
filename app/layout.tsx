@@ -58,9 +58,18 @@ export default async function RootLayout({
   let initialServerData = undefined;
   try {
     const [categories, locations, settings] = await Promise.all([
-      getCategoriesWithLiveCounts(),
-      getCachedLocations(),
-      getCachedSystemSettings(),
+      getCategoriesWithLiveCounts().catch((err) => {
+        console.error('RootLayout categories fetch error:', err);
+        return undefined;
+      }),
+      getCachedLocations().catch((err) => {
+        console.error('RootLayout locations fetch error:', err);
+        return undefined;
+      }),
+      getCachedSystemSettings().catch((err) => {
+        console.error('RootLayout settings fetch error:', err);
+        return undefined;
+      }),
     ]);
     initialServerData = {
       categories,

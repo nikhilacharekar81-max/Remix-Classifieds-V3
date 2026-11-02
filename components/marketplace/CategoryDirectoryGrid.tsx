@@ -413,6 +413,7 @@ export const CategoryDirectoryGrid: React.FC<CategoryDirectoryGridProps> = ({
                       </p>
                     ) : (
                       visibleSubs.map((sub) => {
+                        const isSubSelected = selectedSubcategoryId === sub.id;
                         const subAds = (sub.listingCount && sub.listingCount > 0)
                           ? sub.listingCount
                           : (listingCounts.subMap[sub.id] || 0);

@@ -956,7 +956,11 @@ export const CategoriesModule: React.FC = () => {
                   </span>
                 </h1>
                 <p className="text-xs text-slate-500 font-mono">
-                  Slug: /{currentParentCategory.slug} • {listings.filter(l => l.categoryId === currentParentCategory.id).length} live classified ads
+                  Slug: /{currentParentCategory.slug} •{' '}
+                  {(currentParentCategory.listingCount && currentParentCategory.listingCount > 0)
+                    ? currentParentCategory.listingCount
+                    : listings.filter((l) => l.categoryId === currentParentCategory.id).length}{' '}
+                  live classified ads
                 </p>
               </div>
             </div>
@@ -1086,7 +1090,10 @@ export const CategoriesModule: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-3 font-semibold text-slate-900 dark:text-white">
-                        {listings.filter(l => l.subcategoryId === sub.id).length} ads
+                        {(sub.listingCount && sub.listingCount > 0)
+                          ? sub.listingCount
+                          : listings.filter((l) => l.subcategoryId === sub.id).length}{' '}
+                        ads
                       </td>
                       <td className="p-3">
                         <button
@@ -1301,7 +1308,13 @@ export const CategoriesModule: React.FC = () => {
                           </h3>
                         </div>
                         <div className="text-[11px] text-slate-400 font-mono">
-                          /{rootCat.slug} • {subcategories.length} subcategories
+                          /{rootCat.slug} • {subcategories.length} subcategories •{' '}
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                            {(rootCat.listingCount && rootCat.listingCount > 0)
+                              ? rootCat.listingCount
+                              : listings.filter((l) => l.categoryId === rootCat.id).length}{' '}
+                            ads
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1508,7 +1521,10 @@ export const CategoriesModule: React.FC = () => {
                     </td>
                     <td className="p-3 font-mono text-slate-500">/{rootCat.slug}</td>
                     <td className="p-3 font-semibold text-slate-900 dark:text-white">
-                      {listings.filter(l => l.categoryId === rootCat.id).length} ads
+                      {(rootCat.listingCount && rootCat.listingCount > 0)
+                        ? rootCat.listingCount
+                        : listings.filter((l) => l.categoryId === rootCat.id).length}{' '}
+                      ads
                     </td>
                     <td className="p-3">
                       <button

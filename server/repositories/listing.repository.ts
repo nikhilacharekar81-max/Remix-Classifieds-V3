@@ -3,7 +3,7 @@ import * as schema from '@/src/db/schema';
 import { eq, and, notInArray, sql, desc, asc, or, ilike, gte, lte, inArray } from 'drizzle-orm';
 import { Listing } from '@/lib/types';
 import { normalizeAdTitle, DUPLICATE_TITLE_ERROR_MESSAGE } from '@/lib/utils/adTitleValidation';
-import { ensureDatabaseSeeded } from '@/server/seed-postgres';
+import { getCachedCategoryHierarchy } from '@/server/cache/reference-data.cache';
 
 export interface ListingFilterQuery {
   city?: string;
@@ -84,7 +84,6 @@ export class ListingRepository {
 
   public async findById(id: string): Promise<Listing | null> {
     try {
-      await ensureDatabaseSeeded();
       const cleanId = id.trim();
       const digitsMatch = cleanId.match(/^lst_(\d+)$/i);
 
@@ -168,7 +167,6 @@ export class ListingRepository {
     total: number;
   }> {
     try {
-      await ensureDatabaseSeeded();
       const conditions: any[] = [];
 
       // Status & Expiration filtering: Public marketplace shows ONLY non-expired approved listings
@@ -194,15 +192,29 @@ export class ListingRepository {
         conditions.push(ilike(schema.listings.city, `%${cleanCity}%`));
       }
 
-      // Category filter (matches main category or any child subcategory)
+      // Category filter (resolves child subcategory IDs in-memory from cached category hierarchy)
       if (options.category && options.category !== 'all') {
-        conditions.push(
-          or(
-            eq(schema.listings.categoryId, options.category),
-            eq(schema.listings.subcategoryId, options.category),
-            sql`${schema.listings.subcategoryId} IN (SELECT id FROM ${schema.categories} WHERE parent_id = ${options.category})`
-          )
-        );
+        const allCategories = await getCachedCategoryHierarchy();
+        const childSubcategoryIds = allCategories
+          .filter((c) => c.parentId === options.category)
+          .map((c) => c.id);
+
+        if (childSubcategoryIds.length > 0) {
+          conditions.push(
+            or(
+              eq(schema.listings.categoryId, options.category),
+              eq(schema.listings.subcategoryId, options.category),
+              inArray(schema.listings.subcategoryId, childSubcategoryIds)
+            )
+          );
+        } else {
+          conditions.push(
+            or(
+              eq(schema.listings.categoryId, options.category),
+              eq(schema.listings.subcategoryId, options.category)
+            )
+          );
+        }
       }
 
       // Subcategory filter

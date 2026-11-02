@@ -193,12 +193,16 @@ const fetchCachedLiveListingCountsInternal = unstable_cache(
   async (): Promise<{ parentCountMap: Record<string, number>; subCountMap: Record<string, number> }> => {
     return categoryRepository.findLiveListingCounts();
   },
-  ['marketplace-reference-live-listing-counts-v1'],
+  ['marketplace-reference-live-listing-counts-v3'],
   {
     tags: [REFERENCE_CACHE_TAGS.LISTING_COUNTS],
     revalidate: 300, // 5 minutes bounded freshness fallback for natural listing expirations
   }
 );
+
+let lastOutboxCheckMs = 0;
+let lastKnownGoodCounts: { parentCountMap: Record<string, number>; subCountMap: Record<string, number> } | null = null;
+let lastKnownGoodCategoriesWithCounts: Category[] | null = null;
 
 /**
  * Returns the cached category + subcategory hierarchy (without dynamic listing counts).
@@ -223,21 +227,49 @@ export const getCachedCategoryHierarchy = cache(async (): Promise<Category[]> =>
  * Deduplicated per-request via React `cache()` and shared across requests via Next.js `unstable_cache`.
  */
 export const getCachedLiveListingCounts = cache(async () => {
-  // Fire background check for durable outbox entries from prior workers/restarts
-  processPendingInvalidations().catch(() => {});
+  // Throttle background outbox check to at most once every 60s to avoid extra DB queries on every request
+  const nowMs = Date.now();
+  if (nowMs - lastOutboxCheckMs > 60000) {
+    lastOutboxCheckMs = nowMs;
+    processPendingInvalidations().catch(() => {});
+  }
+
+  let counts: { parentCountMap: Record<string, number>; subCountMap: Record<string, number> };
 
   if (failedInvalidationTags.has(REFERENCE_CACHE_TAGS.LISTING_COUNTS)) {
     tryHealInvalidationTag(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
-    return categoryRepository.findLiveListingCounts();
+    counts = await categoryRepository.findLiveListingCounts();
+  } else {
+    counts = await fetchCachedLiveListingCountsInternal();
+    // Self-heal if Data Cache served a stale empty map from before seeding completed
+    if (
+      Object.keys(counts?.parentCountMap || {}).length === 0 &&
+      Object.keys(counts?.subCountMap || {}).length === 0
+    ) {
+      counts = await categoryRepository.findLiveListingCounts();
+    }
   }
-  return fetchCachedLiveListingCountsInternal();
+
+  if (
+    Object.keys(counts?.parentCountMap || {}).length > 0 ||
+    Object.keys(counts?.subCountMap || {}).length > 0
+  ) {
+    lastKnownGoodCounts = counts;
+  } else if (lastKnownGoodCounts) {
+    return lastKnownGoodCounts;
+  }
+
+  return counts;
 });
 
 export const getCategoriesWithLiveCounts = cache(async (): Promise<Category[]> => {
   try {
     const [hierarchy, counts] = await Promise.all([
       getCachedCategoryHierarchy(),
-      getCachedLiveListingCounts(),
+      getCachedLiveListingCounts().catch((err) => {
+        console.error('[ReferenceCache] getCachedLiveListingCounts fallback triggered:', err);
+        return lastKnownGoodCounts || { parentCountMap: {}, subCountMap: {} };
+      }),
     ]);
 
     const parentCountMap = counts?.parentCountMap || {};
@@ -252,7 +284,7 @@ export const getCategoriesWithLiveCounts = cache(async (): Promise<Category[]> =
       }
     }
 
-    return hierarchy.map((cat) => {
+    const merged = hierarchy.map((cat) => {
       if (cat.parentId) {
         return {
           ...cat,
@@ -266,8 +298,19 @@ export const getCategoriesWithLiveCounts = cache(async (): Promise<Category[]> =
         listingCount: Math.max(directCount, childrenSum),
       };
     });
+
+    if (merged.some((c) => (c.listingCount || 0) > 0)) {
+      lastKnownGoodCategoriesWithCounts = merged;
+    } else if (lastKnownGoodCategoriesWithCounts) {
+      return lastKnownGoodCategoriesWithCounts;
+    }
+
+    return merged;
   } catch (error) {
     console.error('[ReferenceCache] getCategoriesWithLiveCounts error:', error);
+    if (lastKnownGoodCategoriesWithCounts) {
+      return lastKnownGoodCategoriesWithCounts;
+    }
     return getCachedCategoryHierarchy();
   }
 });

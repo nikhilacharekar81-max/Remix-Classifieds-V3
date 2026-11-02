@@ -45,54 +45,37 @@ export class CategoryRepository {
   }
 
   /**
-   * Computes live approved, non-expired listing counts grouped by category and subcategory.
-   * Never cached as static reference data.
+   * Computes live approved, non-expired listing counts grouped by category and subcategory
+   * in a single SQL query to minimize connection pool pressure.
    */
   public async findLiveListingCounts(): Promise<{
     parentCountMap: Record<string, number>;
     subCountMap: Record<string, number>;
   }> {
     try {
-      await ensureDatabaseSeeded();
       const now = new Date();
-      const [catCounts, subCounts] = await withDbRetry(() =>
-        Promise.all([
-          db
-            .select({
-              categoryId: schema.listings.categoryId,
-              count: sql<number>`count(*)::int`,
-            })
-            .from(schema.listings)
-            .where(and(eq(schema.listings.status, 'approved'), gte(schema.listings.expiresAt, now)))
-            .groupBy(schema.listings.categoryId),
-          db
-            .select({
-              subcategoryId: schema.listings.subcategoryId,
-              count: sql<number>`count(*)::int`,
-            })
-            .from(schema.listings)
-            .where(
-              and(
-                eq(schema.listings.status, 'approved'),
-                gte(schema.listings.expiresAt, now),
-                sql`${schema.listings.subcategoryId} IS NOT NULL`
-              )
-            )
-            .groupBy(schema.listings.subcategoryId),
-        ])
+      const rows = await withDbRetry(() =>
+        db
+          .select({
+            categoryId: schema.listings.categoryId,
+            subcategoryId: schema.listings.subcategoryId,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(schema.listings)
+          .where(and(eq(schema.listings.status, 'approved'), gte(schema.listings.expiresAt, now)))
+          .groupBy(schema.listings.categoryId, schema.listings.subcategoryId)
       );
 
       const parentCountMap: Record<string, number> = {};
-      for (const c of catCounts) {
-        if (c.categoryId) {
-          parentCountMap[c.categoryId] = Number(c.count) || 0;
-        }
-      }
-
       const subCountMap: Record<string, number> = {};
-      for (const s of subCounts) {
-        if (s.subcategoryId) {
-          subCountMap[s.subcategoryId] = Number(s.count) || 0;
+
+      for (const r of rows) {
+        const cnt = Number(r.count) || 0;
+        if (r.categoryId) {
+          parentCountMap[r.categoryId] = (parentCountMap[r.categoryId] || 0) + cnt;
+        }
+        if (r.subcategoryId) {
+          subCountMap[r.subcategoryId] = (subCountMap[r.subcategoryId] || 0) + cnt;
         }
       }
 

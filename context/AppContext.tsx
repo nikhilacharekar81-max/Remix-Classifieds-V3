@@ -291,11 +291,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialServerDat
   const [listings, setListings] = useState<Listing[]>(() =>
     initialServerData?.listings || []
   );
-  const [categories, setCategories] = useState<Category[]>(() =>
-    initialServerData?.categories && initialServerData.categories.length > 0
-      ? initialServerData.categories
-      : INITIAL_CATEGORIES
-  );
+  const [categories, setCategories] = useState<Category[]>(() => {
+    if (
+      initialServerData?.categories &&
+      initialServerData.categories.length > 0 &&
+      initialServerData.categories.some((c) => (c.listingCount || 0) > 0)
+    ) {
+      return initialServerData.categories;
+    }
+    const baseCats =
+      initialServerData?.categories && initialServerData.categories.length > 0
+        ? initialServerData.categories
+        : INITIAL_CATEGORIES;
+    const seededAds = seedCategoriesWithTenAds(INITIAL_LISTINGS);
+    const parentCounts: Record<string, number> = {};
+    const subCounts: Record<string, number> = {};
+    for (const ad of seededAds) {
+      if (ad.status === 'approved') {
+        parentCounts[ad.categoryId] = (parentCounts[ad.categoryId] || 0) + 1;
+        if (ad.subcategoryId) {
+          subCounts[ad.subcategoryId] = (subCounts[ad.subcategoryId] || 0) + 1;
+        }
+      }
+    }
+    return baseCats.map((c) => ({
+      ...c,
+      listingCount: c.parentId ? subCounts[c.id] || 0 : parentCounts[c.id] || 0,
+    }));
+  });
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>(INITIAL_CUSTOM_FIELDS);
   const [locations, setLocations] = useState<LocationItem[]>(() =>
     initialServerData?.locations && initialServerData.locations.length > 0
@@ -319,7 +342,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialServerDat
 
   // Sync server-provided reference data when root layout revalidates
   useEffect(() => {
-    if (initialServerData?.categories && initialServerData.categories.length > 0) {
+    if (
+      initialServerData?.categories &&
+      initialServerData.categories.length > 0 &&
+      initialServerData.categories.some((c) => (c.listingCount || 0) > 0)
+    ) {
       setCategories(initialServerData.categories);
     }
   }, [initialServerData?.categories]);
@@ -552,7 +579,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialServerDat
 
   // Synchronize state with PostgreSQL backend on mount via /api/bootstrap only when needed (e.g. admin/user panel or if SSR data was not provided)
   useEffect(() => {
-    if (initialServerData) {
+    const hasServerCategoryCounts = Boolean(
+      initialServerData?.categories?.some((c) => (c.listingCount || 0) > 0)
+    );
+    if (initialServerData && hasServerCategoryCounts) {
       const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
       const needsFullCatalogue =
         pathname.startsWith('/admin') ||

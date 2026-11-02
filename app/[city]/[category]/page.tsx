@@ -8,6 +8,7 @@ import {
 import { listingService } from '@/server/services/listing.service';
 import { AppClientRouter } from '@/components/AppClientRouter';
 import { stripChillySuffixes, unslugifyCity, unslugifyCategory, serializeJsonLd } from '@/lib/utils/seoAndUrlHelper';
+import { INITIAL_CATEGORIES, INITIAL_LOCATIONS } from '@/lib/data/initialData';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,23 +105,76 @@ export default async function CategoryCityPage({ params, searchParams }: Categor
     if (typeof v === 'string') cleanQuery[k] = v;
   }
 
-  const {
-    cleanCitySlug,
-    cleanCatSlug,
-    locations,
-    loc,
-    resolvedFirstCat,
-    resolvedSecondCat,
-  } = await getCategoryCityContext(city, category);
+  // Pre-resolve common slugs synchronously in-memory to launch context & listing queries in parallel
+  const { cleanSlug: fastCitySlug } = stripChillySuffixes(city);
+  const { cleanSlug: fastCatSlug } = stripChillySuffixes(category);
+  const isFastPostRoute = fastCatSlug === 'post' || fastCatSlug === 'sell';
+
+  const fastLoc =
+    INITIAL_LOCATIONS.find((l) => l.slug === fastCitySlug || l.slug === city) ?? null;
+  const fastFirstCat =
+    INITIAL_CATEGORIES.find((c) => c.slug === fastCitySlug || c.slug === city) ||
+    unslugifyCategory(city, INITIAL_CATEGORIES).categoryObj;
+  const fastSecondCat =
+    INITIAL_CATEGORIES.find((c) => c.slug === fastCatSlug || c.slug === category) ||
+    unslugifyCategory(category, INITIAL_CATEGORIES).categoryObj;
+
+  let parallelListingsPromise: ReturnType<typeof listingService.getPaginatedPageListings> | null = null;
+  let parallelKey = '';
+
+  if (!isFastPostRoute) {
+    if (!fastLoc && fastFirstCat && fastSecondCat) {
+      parallelKey = `all-india:${fastFirstCat.id}:${fastSecondCat.id}`;
+      parallelListingsPromise = listingService.getPaginatedPageListings({
+        category: fastFirstCat.id,
+        subcategory: fastSecondCat.id,
+        query: cleanQuery,
+        pageSize: 50,
+      });
+    } else if (fastLoc || fastCitySlug === 'all-india' || fastCitySlug === 'india' || fastCitySlug === 'all') {
+      const fastParentCatId = fastSecondCat
+        ? fastSecondCat.parentId || fastSecondCat.id
+        : undefined;
+      const fastSubCatId =
+        fastSecondCat && fastSecondCat.parentId ? fastSecondCat.id : undefined;
+      parallelKey = `city:${fastLoc ? fastLoc.name : ''}:${fastParentCatId || ''}:${fastSubCatId || ''}`;
+      parallelListingsPromise = listingService.getPaginatedPageListings({
+        city: fastLoc ? fastLoc.name : undefined,
+        category: fastParentCatId,
+        subcategory: fastSubCatId,
+        query: cleanQuery,
+        pageSize: 50,
+      });
+    }
+  }
+
+  const [
+    {
+      cleanCitySlug,
+      cleanCatSlug,
+      locations,
+      loc,
+      resolvedFirstCat,
+      resolvedSecondCat,
+    },
+    preloadedPaginated,
+  ] = await Promise.all([
+    getCategoryCityContext(city, category),
+    parallelListingsPromise ?? Promise.resolve(null),
+  ]);
 
   // Case 1: 2-segment All-India ParentCategory + Subcategory route (e.g. /services/home-services-repairs, /bikes/motorcycles)
   if (!loc && resolvedFirstCat && resolvedSecondCat) {
-    const paginated = await listingService.getPaginatedPageListings({
-      category: resolvedFirstCat.id,
-      subcategory: resolvedSecondCat.id,
-      query: cleanQuery,
-      pageSize: 50,
-    });
+    const expectedKey = `all-india:${resolvedFirstCat.id}:${resolvedSecondCat.id}`;
+    const paginated =
+      preloadedPaginated && parallelKey === expectedKey
+        ? preloadedPaginated
+        : await listingService.getPaginatedPageListings({
+            category: resolvedFirstCat.id,
+            subcategory: resolvedSecondCat.id,
+            query: cleanQuery,
+            pageSize: 50,
+          });
 
     const breadcrumbJsonLd = {
       '@context': 'https://schema.org',
@@ -191,13 +245,17 @@ export default async function CategoryCityPage({ params, searchParams }: Categor
   const subCatId =
     resolvedSecondCat && resolvedSecondCat.parentId ? resolvedSecondCat.id : undefined;
 
-  const paginated = await listingService.getPaginatedPageListings({
-    city: loc ? loc.name : undefined,
-    category: parentCatId,
-    subcategory: subCatId,
-    query: cleanQuery,
-    pageSize: 50,
-  });
+  const expectedCityKey = `city:${loc ? loc.name : ''}:${parentCatId || ''}:${subCatId || ''}`;
+  const paginated =
+    preloadedPaginated && parallelKey === expectedCityKey
+      ? preloadedPaginated
+      : await listingService.getPaginatedPageListings({
+          city: loc ? loc.name : undefined,
+          category: parentCatId,
+          subcategory: subCatId,
+          query: cleanQuery,
+          pageSize: 50,
+        });
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
