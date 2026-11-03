@@ -2,7 +2,7 @@ import { db, withDbRetry } from '@/src/db/index';
 import * as schema from '@/src/db/schema';
 import { eq, asc, and, gte, sql } from 'drizzle-orm';
 import { Category, CustomFieldDefinition } from '@/lib/types';
-import { ensureDatabaseSeeded } from '@/server/seed-postgres';
+import { ensureDatabaseSeeded, isDatabaseInitialized } from '@/server/seed-postgres';
 import { getCategoriesWithLiveCounts } from '@/server/cache/reference-data.cache';
 
 export class CategoryRepository {
@@ -27,9 +27,15 @@ export class CategoryRepository {
   /**
    * Fetches only the static category and subcategory hierarchy rows from PostgreSQL
    * without dynamic listing counts. Used as the source for the shared reference-data cache.
+   * Once essential production initialization is verified once per process, normal visitor requests
+   * query categories directly without checking initialization markers or running seeding.
    */
   public async findAllHierarchy(): Promise<Category[]> {
     try {
+      if (!isDatabaseInitialized()) {
+        await ensureDatabaseSeeded();
+      }
+
       let rows = await withDbRetry(() =>
         db
           .select()
@@ -37,7 +43,6 @@ export class CategoryRepository {
           .orderBy(asc(schema.categories.orderIndex))
       );
 
-      // Only run seeding on first-time boot if categories table is completely empty
       if (rows.length === 0) {
         await ensureDatabaseSeeded();
         rows = await withDbRetry(() =>
@@ -46,6 +51,10 @@ export class CategoryRepository {
             .from(schema.categories)
             .orderBy(asc(schema.categories.orderIndex))
         );
+      }
+
+      if (rows.length === 0) {
+        throw new Error('Category hierarchy is empty after database initialization');
       }
 
       return rows.map((r) => this.mapRowToCategory(r, 0));

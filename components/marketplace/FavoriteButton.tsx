@@ -6,7 +6,9 @@ import { Listing } from '@/lib/types';
 import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
 
 export interface FavoriteButtonProps {
-  listing: Listing;
+  listing?: Listing;
+  listingId?: string;
+  listingTitle?: string;
   onSaveWatchlist?: (listing: Listing) => void;
   variant?: 'grid' | 'listicle';
 }
@@ -30,20 +32,25 @@ function getServerSavedSnapshot(): boolean {
 
 export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
   listing,
+  listingId,
+  listingTitle,
   onSaveWatchlist,
   variant = 'grid',
 }) => {
+  const effectiveId = listingId || listing?.id || '';
+  const effectiveTitle = listingTitle || listing?.title || 'Listing';
+
   const getClientSavedSnapshot = useCallback(() => {
-    if (typeof window === 'undefined') return false;
+    if (typeof window === 'undefined' || !effectiveId) return false;
     try {
       const raw = window.localStorage.getItem(WATCHLIST_STORAGE_KEY);
       if (!raw) return false;
       const ids = JSON.parse(raw) as string[];
-      return Array.isArray(ids) && ids.includes(listing.id);
+      return Array.isArray(ids) && ids.includes(effectiveId);
     } catch {
       return false;
     }
-  }, [listing.id]);
+  }, [effectiveId]);
 
   const isSaved = useSyncExternalStore(
     subscribeWatchlist,
@@ -54,13 +61,16 @@ export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!effectiveId) return;
 
     let nextSaved = !isSaved;
     try {
       const raw = window.localStorage.getItem(WATCHLIST_STORAGE_KEY);
       const ids: string[] = raw ? JSON.parse(raw) : [];
-      const exists = ids.includes(listing.id);
-      const updated = exists ? ids.filter((id) => id !== listing.id) : [...ids, listing.id];
+      const exists = ids.includes(effectiveId);
+      const updated = exists
+        ? ids.filter((id) => id !== effectiveId)
+        : [...ids, effectiveId];
       window.localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(updated));
       nextSaved = !exists;
       window.dispatchEvent(new CustomEvent(WATCHLIST_EVENT_NAME));
@@ -68,7 +78,7 @@ export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
       // ignore storage errors
     }
 
-    if (onSaveWatchlist) {
+    if (onSaveWatchlist && listing) {
       onSaveWatchlist(listing);
       return;
     }
@@ -77,8 +87,8 @@ export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
       type: 'info',
       title: nextSaved ? 'Saved to Watchlist' : 'Removed from Watchlist',
       message: nextSaved
-        ? `"${listing.title}" saved to your watchlist.`
-        : `"${listing.title}" removed from your watchlist.`,
+        ? `"${effectiveTitle}" saved to your watchlist.`
+        : `"${effectiveTitle}" removed from your watchlist.`,
     });
   };
 

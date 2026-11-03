@@ -1,7 +1,7 @@
-'use client';
-import React, { useState } from 'react';
+import React from 'react';
 import type { SeoContentEntry } from '@/lib/data/seoContentData';
-import { Sparkles, MapPin, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
+import { Sparkles, MapPin, ShieldCheck } from 'lucide-react';
+import { SeoExpandableText } from './SeoExpandableText';
 
 interface SeoContentBlockProps {
   locationName: string;
@@ -15,8 +15,6 @@ export const SeoContentBlock: React.FC<SeoContentBlockProps> = ({
   categoryName,
   seoData: propSeoData,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-
   const isIndia = !locationName || locationName === 'All India' || locationName === 'India';
   const displayLocation = isIndia ? 'India' : locationName;
 
@@ -48,7 +46,7 @@ export const SeoContentBlock: React.FC<SeoContentBlockProps> = ({
                     {displayLocation} Directory
                   </span>
                   <span>•</span>
-                  <span>Direct Buyers & Sellers</span>
+                  <span>Direct Buyers &amp; Sellers</span>
                   <span>•</span>
                   <span className="flex items-center gap-1 text-slate-600 dark:text-slate-300 font-medium">
                     <ShieldCheck className="w-3 h-3 text-emerald-500" /> Verified Directory
@@ -64,37 +62,10 @@ export const SeoContentBlock: React.FC<SeoContentBlockProps> = ({
           </div>
 
           {/* Content Body */}
-          <div className="relative">
-            <p
-              className={`text-slate-600 dark:text-slate-300 text-sm leading-relaxed ${
-                !isExpanded ? 'line-clamp-3 md:line-clamp-none' : ''
-              }`}
-            >
-              {seoData.content}
-            </p>
-
-            {/* Mobile / Short Viewport Toggle if truncated */}
-            <div className="mt-3 flex items-center justify-between">
-              <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="md:hidden inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
-              >
-                {isExpanded ? (
-                  <>
-                    Show Less <ChevronUp className="w-3.5 h-3.5" />
-                  </>
-                ) : (
-                  <>
-                    Read Full Local Guide <ChevronDown className="w-3.5 h-3.5" />
-                  </>
-                )}
-              </button>
-
-              <span className="text-[11px] text-slate-400 dark:text-slate-500 ml-auto">
-                Updated {seoData.lastUpdated}
-              </span>
-            </div>
-          </div>
+          <SeoExpandableText
+            content={seoData.content}
+            lastUpdated={seoData.lastUpdated}
+          />
         </div>
       </div>
     </section>

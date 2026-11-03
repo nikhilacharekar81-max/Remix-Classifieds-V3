@@ -105,7 +105,9 @@ export const ListingGridCard: React.FC<ListingGridCardProps> = ({
 
         {variant === 'catalog' && (
           <FavoriteButton
-            listing={listing}
+            listing={onSaveWatchlist ? listing : undefined}
+            listingId={listing.id}
+            listingTitle={listing.title}
             onSaveWatchlist={onSaveWatchlist}
             variant="grid"
           />

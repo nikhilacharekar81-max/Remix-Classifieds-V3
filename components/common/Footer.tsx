@@ -101,52 +101,52 @@ export const Footer: React.FC<FooterProps> = ({
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'contact-us' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                     Grievance Officer
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'contact-us' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                     Nodal Desk (Govt / Law)
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'report', reportType: 'ad' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                     Report Fraud / Bad Ad
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'terms-and-conditions' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                     Intermediary Rules 2021
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
             </ul>
@@ -165,52 +165,52 @@ export const Footer: React.FC<FooterProps> = ({
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'safety-tips' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                     Anti-Scam Guidelines
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'editorial-guidelines' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                     Prohibited Items List
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'help-support' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                     How Posting Works
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'eeat' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                     E-E-A-T Credentials &amp; Schema
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
             </ul>
@@ -229,52 +229,52 @@ export const Footer: React.FC<FooterProps> = ({
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'sitemap' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
                     Category Sitemap
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'sitemap' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
                     HTML Sitemap &amp; Directory
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'editorial-guidelines' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
                     Editorial Guidelines
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'corrections-policy' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
                     Corrections Policy
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
             </ul>
@@ -293,39 +293,39 @@ export const Footer: React.FC<FooterProps> = ({
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'privacy-policy' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                     Privacy Policy
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'terms-and-conditions' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                     Terms of Use
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 
               <li>
                 <FooterModalButton
                   modalEvent={{ type: 'cms', slug: 'dmca-takedown' }}
+                  showChevron
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                     DMCA / Takedown
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </FooterModalButton>
               </li>
 

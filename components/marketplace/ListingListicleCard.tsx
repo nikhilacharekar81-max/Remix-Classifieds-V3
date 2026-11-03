@@ -160,7 +160,9 @@ export const ListingListicleCard: React.FC<ListingListicleCardProps> = ({
         <div className="flex items-center gap-2">
           {variant === 'catalog' && (
             <FavoriteButton
-              listing={listing}
+              listing={onSaveWatchlist ? listing : undefined}
+              listingId={listing.id}
+              listingTitle={listing.title}
               onSaveWatchlist={onSaveWatchlist}
               variant="listicle"
             />

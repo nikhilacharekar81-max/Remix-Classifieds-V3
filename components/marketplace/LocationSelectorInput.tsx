@@ -12,14 +12,23 @@ import {
   Loader2,
 } from 'lucide-react';
 import { navigateTo, useNavigationFeedback } from '@/lib/router/useRouter';
-import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
+import { buildChillyUrl, slugify } from '@/lib/utils/seoAndUrlHelper';
 import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
 
-interface LocationSelectorInputProps {
+export interface CompactCityOption {
+  id: string;
+  name: string;
+  stateName?: string;
+}
+
+export interface LocationSelectorInputProps {
   className?: string;
   currentCity?: string;
   currentCategoryId?: string;
   currentSubcategoryId?: string;
+  activeCategorySlug?: string;
+  activeSubcategorySlug?: string;
+  cityOptions?: CompactCityOption[];
   categories?: Category[];
   locations?: LocationItem[];
 }
@@ -42,6 +51,9 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
   currentCity,
   currentCategoryId,
   currentSubcategoryId,
+  activeCategorySlug,
+  activeSubcategorySlug,
+  cityOptions: propCityOptions,
   categories: propCategories,
   locations: propLocations,
 }) => {
@@ -102,30 +114,66 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
     }
   }, [isOpen]);
 
-  const states = useMemo(() => locations.filter((loc) => loc.type === 'state'), [locations]);
-  const cities = useMemo(() => locations.filter((loc) => loc.type === 'city'), [locations]);
+  const normalizedCities = useMemo<CompactCityOption[]>(() => {
+    if (propCityOptions && propCityOptions.length > 0) {
+      return propCityOptions;
+    }
+    const states = locations.filter((loc) => loc.type === 'state');
+    const stateMap = new Map(states.map((s) => [s.id, s.name]));
+    return locations
+      .filter((loc) => loc.type === 'city')
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        stateName: c.parentId ? stateMap.get(c.parentId) : undefined,
+      }));
+  }, [propCityOptions, locations]);
 
   // Filtered cities list
   const filteredCities = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return cities;
+    if (!q) return normalizedCities;
 
-    return cities.filter((c) => {
-      const state = states.find((s) => s.id === c.parentId);
+    return normalizedCities.filter((c) => {
       return (
         c.name.toLowerCase().includes(q) ||
-        (state && state.name.toLowerCase().includes(q))
+        (c.stateName && c.stateName.toLowerCase().includes(q))
       );
     });
-  }, [searchQuery, cities, states]);
+  }, [searchQuery, normalizedCities]);
+
+  const computeTargetCityUrl = (cityName: string): string => {
+    // If categories array is available (e.g. SPA mode), use buildChillyUrl directly
+    if (categories.length > 0) {
+      return buildChillyUrl({
+        city: cityName,
+        categoryId: selectedMarketplaceCategory,
+        subcategoryId: selectedMarketplaceSubcategory,
+        categories,
+      });
+    }
+
+    // Server-First compact slug resolution without serializing 104 categories
+    const isDefaultAllIndia = !cityName || cityName === 'All India' || cityName === 'All Cities';
+    const locationSegment = isDefaultAllIndia ? '' : slugify(cityName);
+    const catSegment = activeCategorySlug || '';
+    const subCatSegment = activeSubcategorySlug || '';
+
+    if (!locationSegment) {
+      if (catSegment && subCatSegment) return `/${catSegment}/${subCatSegment}`;
+      if (catSegment) return `/${catSegment}`;
+      if (subCatSegment) return `/${subCatSegment}`;
+      return '/';
+    }
+
+    if (catSegment && subCatSegment) return `/${locationSegment}/${catSegment}/${subCatSegment}`;
+    if (catSegment) return `/${locationSegment}/${catSegment}`;
+    if (subCatSegment) return `/${locationSegment}/${subCatSegment}`;
+    return `/${locationSegment}`;
+  };
 
   const handleSelectCity = (cityName: string) => {
-    const targetUrl = buildChillyUrl({
-      city: cityName,
-      categoryId: selectedMarketplaceCategory,
-      subcategoryId: selectedMarketplaceSubcategory,
-      categories,
-    });
+    const targetUrl = computeTargetCityUrl(cityName);
     if (isSameUrlInProgress(targetUrl)) {
       return;
     }
@@ -211,7 +259,6 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
       {/* Clean Single-Screen Popover */}
       {isOpen && (
         <div className="absolute left-0 top-full mt-2 w-80 sm:w-[340px] bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden text-slate-900 animate-in fade-in slide-in-from-top-2 duration-150">
-          
           {/* Search Box */}
           <div className="p-3 border-b border-slate-100 bg-slate-50/70">
             <div className="relative flex items-center">
@@ -237,7 +284,6 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
           </div>
 
           <div className="max-h-[320px] overflow-y-auto p-3 space-y-3 text-xs">
-            
             {/* If Not Searching: GPS & Popular Pills */}
             {!searchQuery.trim() && (
               <>
@@ -288,7 +334,6 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
               <div className="space-y-0.5">
                 {filteredCities.length > 0 ? (
                   filteredCities.map((city) => {
-                    const parentState = states.find((s) => s.id === city.parentId);
                     const isSelected = selectedMarketplaceCity.toLowerCase() === city.name.toLowerCase();
 
                     return (
@@ -305,8 +350,8 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
                         <div className="flex items-center gap-2 min-w-0">
                           <MapPin className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600' : 'text-slate-400'}`} />
                           <span className="font-semibold truncate">{city.name}</span>
-                          {parentState && (
-                            <span className="text-[10px] text-slate-400 truncate">({parentState.name})</span>
+                          {city.stateName && (
+                            <span className="text-[10px] text-slate-400 truncate">({city.stateName})</span>
                           )}
                         </div>
                         {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
@@ -327,7 +372,6 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
                 )}
               </div>
             </div>
-
           </div>
 
           <div className="p-2 border-t border-slate-100 bg-slate-50 text-center">
@@ -339,7 +383,6 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
               🌐 Reset to All India
             </button>
           </div>
-
         </div>
       )}
     </div>

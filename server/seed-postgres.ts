@@ -1,5 +1,6 @@
 import { db } from '@/src/db/index';
 import * as schema from '@/src/db/schema';
+import { eq, sql } from 'drizzle-orm';
 import { hashPassword } from '@/lib/auth/password';
 import {
   INITIAL_CATEGORIES,
@@ -16,8 +17,25 @@ import {
 } from '@/lib/data/initialData';
 import { seedCategoriesWithTenAds } from '@/lib/data/listingsSeeder';
 
-let isDatabaseSeeded = false;
-let activeSeedPromise: Promise<void> | null = null;
+export type SeedDbExecutor = Pick<typeof db, 'insert' | 'select' | 'update' | 'delete' | 'execute'>;
+
+export const INITIALIZATION_MARKER_ID = 'init_complete_v3';
+const ADVISORY_LOCK_KEY_1 = 20261103;
+const ADVISORY_LOCK_KEY_2 = 1;
+
+declare global {
+  var _isDatabaseInitialized: boolean | undefined;
+  var _activeSeedPromise: Promise<void> | undefined;
+}
+
+export function isDatabaseInitialized(): boolean {
+  return Boolean(globalThis._isDatabaseInitialized);
+}
+
+export function resetDatabaseInitializationStateForTesting(): void {
+  globalThis._isDatabaseInitialized = false;
+  globalThis._activeSeedPromise = undefined;
+}
 
 function chunkArray<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -27,52 +45,270 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-export async function ensureDatabaseSeeded(): Promise<void> {
-  if (isDatabaseSeeded) {
-    return;
-  }
+const validCategoryIds = new Set(INITIAL_CATEGORIES.map((c) => c.id));
 
-  if (activeSeedPromise) {
-    return activeSeedPromise;
-  }
-
-  activeSeedPromise = (async () => {
-    try {
-      const existing = await db
-        .select({ id: schema.systemSettings.id })
-        .from(schema.systemSettings)
-        .limit(1);
-      if (existing.length === 0) {
-        await seedPostgres();
-      }
-      isDatabaseSeeded = true;
-    } catch (err) {
-      isDatabaseSeeded = false;
-      console.error('ensureDatabaseSeeded check failed:', err);
-    } finally {
-      activeSeedPromise = null;
-    }
-  })();
-
-  return activeSeedPromise;
+function resolveCategoryId(rawId: string): string {
+  let id = rawId;
+  if (id === 'cat_vehicles') id = 'cat_cars';
+  if (id === 'cat_buy_and_sell') id = 'cat_electronics';
+  if (id === 'cat_pets_animals') id = 'cat_pets';
+  if (!validCategoryIds.has(id)) return 'cat_electronics';
+  return id;
 }
 
-export async function seedPostgres() {
-  console.log('--- Starting High-Speed Batch PostgreSQL Database Seeding ---');
-  const defaultPasswordHash = await hashPassword('Password123!');
-  const validCategoryIds = new Set(INITIAL_CATEGORIES.map((c) => c.id));
+/**
+ * Checks whether the database has completed all essential production initialization steps.
+ * Requires both the explicit completion marker ('init_complete_v3') and non-empty core reference tables
+ * so a partially populated database is never mistaken for a fully initialized database.
+ */
+export async function checkIsFullyInitialized(executor: SeedDbExecutor = db): Promise<boolean> {
+  const [markerRows, primarySettingsRows, categoryCountRes, locationCountRes] = await Promise.all([
+    executor
+      .select({ id: schema.systemSettings.id })
+      .from(schema.systemSettings)
+      .where(eq(schema.systemSettings.id, INITIALIZATION_MARKER_ID))
+      .limit(1),
+    executor
+      .select({ id: schema.systemSettings.id })
+      .from(schema.systemSettings)
+      .where(eq(schema.systemSettings.id, 'primary'))
+      .limit(1),
+    executor
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.categories),
+    executor
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.locations),
+  ]);
 
-  const resolveCategoryId = (rawId: string): string => {
-    let id = rawId;
-    if (id === 'cat_vehicles') id = 'cat_cars';
-    if (id === 'cat_buy_and_sell') id = 'cat_electronics';
-    if (id === 'cat_pets_animals') id = 'cat_pets';
-    if (!validCategoryIds.has(id)) return 'cat_electronics';
-    return id;
+  const hasMarker = markerRows.length > 0;
+  const hasPrimarySettings = primarySettingsRows.length > 0;
+  const categoryCount = Number(categoryCountRes[0]?.count || 0);
+  const locationCount = Number(locationCountRes[0]?.count || 0);
+
+  return (
+    hasMarker &&
+    hasPrimarySettings &&
+    categoryCount >= INITIAL_CATEGORIES.length &&
+    locationCount >= INITIAL_LOCATIONS.length
+  );
+}
+
+/**
+ * PHASE 1A: Seeds ONLY essential production reference and configuration data:
+ * - Categories & Subcategories (INITIAL_CATEGORIES)
+ * - Category Custom Fields (INITIAL_CUSTOM_FIELDS)
+ * - Locations (INITIAL_LOCATIONS)
+ * - Boost Packages (INITIAL_PACKAGES)
+ * - Moderation Rules (INITIAL_MODERATION_RULES)
+ * - System Email Templates (INITIAL_EMAIL_TEMPLATES)
+ * - Legal & Compliance CMS Pages (INITIAL_CMS_PAGES)
+ * - Primary System Settings (INITIAL_SETTINGS)
+ * - Completion Marker ('init_complete_v3') written ONLY after all steps succeed
+ *
+ * Uses batch inserts with `.onConflictDoNothing()` so existing data is never overwritten or deleted.
+ */
+export async function seedEssentialProductionData(executor: SeedDbExecutor = db): Promise<void> {
+  console.log('--- Starting Essential Production Database Initialization ---');
+
+  // 1. Categories (Batch Insert: Parents first, then Children)
+  const parentCategories = INITIAL_CATEGORIES.filter((c) => !c.parentId);
+  const childCategories = INITIAL_CATEGORIES.filter((c) => c.parentId);
+
+  const mapCategory = (c: (typeof INITIAL_CATEGORIES)[0]) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    icon: c.icon,
+    parentId: c.parentId || null,
+    orderIndex: c.order || (c as any).orderIndex || 0,
+    isActive: c.isActive ?? true,
+    seoTitle: c.seoTitle || null,
+    seoDescription: c.seoDescription || null,
+    isPaid: c.isPaid ?? false,
+    postingFee: String(c.postingFee || 0),
+    freeListingsQuota: c.freeListingsQuota ?? 3,
+  });
+
+  for (const batch of chunkArray(parentCategories.map(mapCategory), 50)) {
+    await executor.insert(schema.categories).values(batch).onConflictDoNothing();
+  }
+  for (const batch of chunkArray(childCategories.map(mapCategory), 50)) {
+    await executor.insert(schema.categories).values(batch).onConflictDoNothing();
+  }
+
+  // 2. Custom Fields (Batch Insert)
+  const customFieldsToInsert = INITIAL_CUSTOM_FIELDS.map((f) => ({
+    id: f.id,
+    categoryId: resolveCategoryId(f.categoryId),
+    name: f.name,
+    label: f.label,
+    type: f.type,
+    options: f.options || [],
+    unit: f.unit || null,
+    required: f.required ?? false,
+    filterable: f.filterable ?? true,
+    orderIndex: f.orderIndex || 0,
+  }));
+
+  for (const batch of chunkArray(customFieldsToInsert, 50)) {
+    await executor.insert(schema.categoryCustomFields).values(batch).onConflictDoNothing();
+  }
+
+  // 3. Locations (Batch Insert: Parents first, then Children)
+  const rootLocations = INITIAL_LOCATIONS.filter((l) => !l.parentId);
+  const childLocations = INITIAL_LOCATIONS.filter((l) => l.parentId);
+
+  const mapLocation = (loc: (typeof INITIAL_LOCATIONS)[0]) => {
+    const anyLoc = loc as any;
+    const s = anyLoc.slug || loc.name.toLowerCase().replace(/\s+/g, '-');
+    const g = anyLoc.geoId || (loc.id === 'loc_in' ? 'g0' : `g_${loc.id}`);
+    return {
+      id: loc.id,
+      type: loc.type,
+      name: loc.name,
+      slug: s,
+      code: loc.code || null,
+      geoId: g,
+      parentId: loc.parentId || null,
+      latitude: anyLoc.latitude || null,
+      longitude: anyLoc.longitude || null,
+      popular: loc.popular ?? false,
+      orderIndex: anyLoc.orderIndex || anyLoc.order || 0,
+    };
   };
 
-  // 1. Users & Admins (Batch Insert)
-  console.log('Batch seeding users & admins...');
+  for (const batch of chunkArray(rootLocations.map(mapLocation), 50)) {
+    await executor.insert(schema.locations).values(batch).onConflictDoNothing();
+  }
+  for (const batch of chunkArray(childLocations.map(mapLocation), 50)) {
+    await executor.insert(schema.locations).values(batch).onConflictDoNothing();
+  }
+
+  // 4. Boost Packages (Batch Insert)
+  const packagesToInsert = INITIAL_PACKAGES.map((p) => ({
+    id: p.id,
+    name: p.name,
+    badge: p.badge,
+    type: p.type || 'boost',
+    durationDays: p.durationDays || 1,
+    durationHours: p.durationHours || 24,
+    price: String(p.price),
+    discountPrice: p.discountPrice ? String(p.discountPrice) : null,
+    currency: p.currency || 'INR',
+    features: p.features || [],
+    isActive: p.isActive ?? true,
+    salesCount: p.salesCount || 0,
+  }));
+  for (const batch of chunkArray(packagesToInsert, 50)) {
+    await executor.insert(schema.boostPackages).values(batch).onConflictDoNothing();
+  }
+
+  // 5. Moderation Rules (Batch Insert)
+  const rulesToInsert = INITIAL_MODERATION_RULES.map((r) => ({
+    id: r.id,
+    title: r.title,
+    type: r.type,
+    action: r.action,
+    keywords: r.keywords || [],
+    threshold: r.threshold ? String(r.threshold) : null,
+    isActive: r.isActive ?? true,
+  }));
+  for (const batch of chunkArray(rulesToInsert, 50)) {
+    await executor.insert(schema.moderationRules).values(batch).onConflictDoNothing();
+  }
+
+  // 6. Email Templates (Batch Insert)
+  const templatesToInsert = INITIAL_EMAIL_TEMPLATES.map((t) => ({
+    id: t.id,
+    name: t.name,
+    category: t.category,
+    subject: t.subject,
+    bodyHtml: t.bodyHtml,
+    bodyText: t.bodyText,
+    actionLabel: t.actionLabel,
+    actionUrl: t.actionUrl,
+    variables: t.variables || [],
+    isActive: t.isActive ?? true,
+    isSystemDefault: t.isSystemDefault ?? false,
+  }));
+  for (const batch of chunkArray(templatesToInsert, 50)) {
+    await executor.insert(schema.emailTemplates).values(batch).onConflictDoNothing();
+  }
+
+  // 7. CMS Pages (Batch Insert)
+  const pagesToInsert = INITIAL_CMS_PAGES.map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    title: p.title,
+    content: p.content,
+    seoTitle: (p as any).seoTitle || p.title,
+    seoDescription: (p as any).seoDescription || p.title,
+    isActive: p.status === 'published' || ((p as any).isActive ?? true),
+  }));
+  for (const batch of chunkArray(pagesToInsert, 50)) {
+    await executor.insert(schema.cmsPages).values(batch).onConflictDoNothing();
+  }
+
+  // 8. Primary System Settings
+  await executor
+    .insert(schema.systemSettings)
+    .values({
+      id: 'primary',
+      siteName: INITIAL_SETTINGS.siteName || 'Chillyads',
+      defaultCurrency: INITIAL_SETTINGS.defaultCurrency || 'INR',
+      currencySymbol: INITIAL_SETTINGS.currencySymbol || '₹',
+      timezone: INITIAL_SETTINGS.timezone || 'Asia/Kolkata',
+      dateFormat: INITIAL_SETTINGS.dateFormat || 'DD/MM/YYYY',
+      listingDurationDays: INITIAL_SETTINGS.listingDurationDays || 30,
+      freeListingsLimit: INITIAL_SETTINGS.freeListingsLimit || 3,
+      extraListingFee: String(INITIAL_SETTINGS.extraListingFee || 99),
+      maxPhotosPerListing: INITIAL_SETTINGS.maxPhotosPerListing || 5,
+      autoApproveVerifiedUsers: INITIAL_SETTINGS.autoApproveVerifiedUsers ?? false,
+      maintenanceMode: INITIAL_SETTINGS.maintenanceMode ?? false,
+      watermarkImages: INITIAL_SETTINGS.watermarkImages ?? false,
+      aiSpamFilterEnabled: INITIAL_SETTINGS.aiSpamFilterEnabled ?? true,
+      otpLoginEnabled: INITIAL_SETTINGS.otpLoginEnabled ?? true,
+      paidFeaturesConfig:
+        INITIAL_SETTINGS.paidFeatures || (INITIAL_SETTINGS as any).paidFeaturesConfig || {},
+    })
+    .onConflictDoNothing();
+
+  // 9. Consistent Initialization Completion Marker (written ONLY after all essential steps succeed)
+  await executor
+    .insert(schema.systemSettings)
+    .values({
+      id: INITIALIZATION_MARKER_ID,
+      siteName: 'INITIALIZED_V3',
+      paidFeaturesConfig: {
+        initializedAt: new Date().toISOString(),
+        version: 'v3',
+      },
+    })
+    .onConflictDoNothing();
+
+  console.log('--- Essential Production Database Initialization Complete ---');
+}
+
+/**
+ * PHASE 1B: Seeds development/test demonstration users, staff accounts, and sample listings.
+ * Never runs automatically in production or during ordinary visitor requests.
+ * Uses `.onConflictDoNothing()` so existing real users and real listings are never modified or deleted.
+ */
+export async function seedDemoData(
+  executor: SeedDbExecutor = db,
+  options?: { allowInProduction?: boolean }
+): Promise<void> {
+  if (process.env.NODE_ENV === 'production' && !options?.allowInProduction) {
+    throw new Error(
+      'Demo data seeding is disabled in production to prevent inserting sample users and listings.'
+    );
+  }
+
+  console.log('--- Starting Development/Demo Data Seeding (Users & Sample Listings) ---');
+  const defaultPasswordHash = await hashPassword('Password123!');
+
+  // 1. Sample Users & Demo Admins (Batch Insert)
   const usersToInsert = [
     ...INITIAL_USERS.map((u) => ({
       id: u.id,
@@ -91,7 +327,8 @@ export async function seedPostgres() {
       reviewCount: u.reviewCount || 0,
       businessName: u.businessDetails?.companyName || (u as any).businessName || null,
       gstNumber: u.businessDetails?.gstNumber || (u as any).gstNumber || null,
-      verifiedBusiness: u.businessDetails?.verifiedBusiness || (u as any).verifiedBusiness || false,
+      verifiedBusiness:
+        u.businessDetails?.verifiedBusiness || (u as any).verifiedBusiness || false,
       adminRole: null as string | null,
     })),
     ...INITIAL_ADMINS.map((a) => ({
@@ -116,91 +353,12 @@ export async function seedPostgres() {
   ];
 
   for (const batch of chunkArray(usersToInsert, 50)) {
-    await db.insert(schema.users).values(batch).onConflictDoNothing();
+    await executor.insert(schema.users).values(batch).onConflictDoNothing();
   }
 
-  // 2. Categories (Batch Insert: Parents first, then Children)
-  console.log('Batch seeding categories...');
-  const parentCategories = INITIAL_CATEGORIES.filter((c) => !c.parentId);
-  const childCategories = INITIAL_CATEGORIES.filter((c) => c.parentId);
-
-  const mapCategory = (c: typeof INITIAL_CATEGORIES[0]) => ({
-    id: c.id,
-    name: c.name,
-    slug: c.slug,
-    icon: c.icon,
-    parentId: c.parentId || null,
-    orderIndex: c.order || (c as any).orderIndex || 0,
-    isActive: c.isActive ?? true,
-    seoTitle: c.seoTitle || null,
-    seoDescription: c.seoDescription || null,
-    isPaid: c.isPaid ?? false,
-    postingFee: String(c.postingFee || 0),
-    freeListingsQuota: c.freeListingsQuota ?? 3,
-  });
-
-  for (const batch of chunkArray(parentCategories.map(mapCategory), 50)) {
-    await db.insert(schema.categories).values(batch).onConflictDoNothing();
-  }
-  for (const batch of chunkArray(childCategories.map(mapCategory), 50)) {
-    await db.insert(schema.categories).values(batch).onConflictDoNothing();
-  }
-
-  // 3. Custom Fields (Batch Insert)
-  console.log('Batch seeding custom fields...');
-  const customFieldsToInsert = INITIAL_CUSTOM_FIELDS.map((f) => ({
-    id: f.id,
-    categoryId: resolveCategoryId(f.categoryId),
-    name: f.name,
-    label: f.label,
-    type: f.type,
-    options: f.options || [],
-    unit: f.unit || null,
-    required: f.required ?? false,
-    filterable: f.filterable ?? true,
-    orderIndex: f.orderIndex || 0,
-  }));
-
-  for (const batch of chunkArray(customFieldsToInsert, 50)) {
-    await db.insert(schema.categoryCustomFields).values(batch).onConflictDoNothing();
-  }
-
-  // 4. Locations (Batch Insert: Parents first, then Children)
-  console.log('Batch seeding locations...');
-  const rootLocations = INITIAL_LOCATIONS.filter((l) => !l.parentId);
-  const childLocations = INITIAL_LOCATIONS.filter((l) => l.parentId);
-
-  const mapLocation = (loc: typeof INITIAL_LOCATIONS[0]) => {
-    const anyLoc = loc as any;
-    const s = anyLoc.slug || loc.name.toLowerCase().replace(/\s+/g, '-');
-    const g = anyLoc.geoId || (loc.id === 'loc_in' ? 'g0' : `g_${loc.id}`);
-    return {
-      id: loc.id,
-      type: loc.type,
-      name: loc.name,
-      slug: s,
-      code: loc.code || null,
-      geoId: g,
-      parentId: loc.parentId || null,
-      latitude: anyLoc.latitude || null,
-      longitude: anyLoc.longitude || null,
-      popular: loc.popular ?? false,
-      orderIndex: anyLoc.orderIndex || anyLoc.order || 0,
-    };
-  };
-
-  for (const batch of chunkArray(rootLocations.map(mapLocation), 50)) {
-    await db.insert(schema.locations).values(batch).onConflictDoNothing();
-  }
-  for (const batch of chunkArray(childLocations.map(mapLocation), 50)) {
-    await db.insert(schema.locations).values(batch).onConflictDoNothing();
-  }
-
-  // 5. Listings (Batch Insert)
-  console.log('Batch seeding listings...');
+  // 2. Sample Listings & Synthetic Sellers (Batch Insert)
   const seeded = seedCategoriesWithTenAds(INITIAL_LISTINGS);
 
-  // Collect and batch insert any missing sellers
   const sellerMap = new Map<string, any>();
   for (const l of seeded) {
     if (!sellerMap.has(l.sellerId)) {
@@ -216,7 +374,7 @@ export async function seedPostgres() {
   }
 
   for (const batch of chunkArray(Array.from(sellerMap.values()), 50)) {
-    await db.insert(schema.users).values(batch).onConflictDoNothing();
+    await executor.insert(schema.users).values(batch).onConflictDoNothing();
   }
 
   const expiresDate = new Date();
@@ -255,98 +413,111 @@ export async function seedPostgres() {
   }));
 
   for (const batch of chunkArray(listingsToInsert, 50)) {
-    await db.insert(schema.listings).values(batch).onConflictDoNothing();
+    await executor.insert(schema.listings).values(batch).onConflictDoNothing();
   }
 
-  // 6. Boost Packages (Batch Insert)
-  console.log('Batch seeding boost packages...');
-  const packagesToInsert = INITIAL_PACKAGES.map((p) => ({
-    id: p.id,
-    name: p.name,
-    badge: p.badge,
-    type: p.type || 'boost',
-    durationDays: p.durationDays || 1,
-    durationHours: p.durationHours || 24,
-    price: String(p.price),
-    discountPrice: p.discountPrice ? String(p.discountPrice) : null,
-    currency: p.currency || 'INR',
-    features: p.features || [],
-    isActive: p.isActive ?? true,
-    salesCount: p.salesCount || 0,
-  }));
-  for (const batch of chunkArray(packagesToInsert, 50)) {
-    await db.insert(schema.boostPackages).values(batch).onConflictDoNothing();
+  console.log('--- Development/Demo Data Seeding Complete ---');
+}
+
+/**
+ * Coordinates essential database initialization across both in-process callers and
+ * concurrent Cloud Run instances using a PostgreSQL transaction-scoped advisory lock
+ * (`pg_advisory_xact_lock`) bound to the exact transaction connection executing the seed queries.
+ *
+ * - Never automatically seeds demo users or sample listings in production or on visitor requests.
+ * - Propagates errors on failure so callers never silently cache or return misleading empty data.
+ */
+export async function ensureDatabaseSeeded(options?: {
+  includeDemoData?: boolean;
+}): Promise<void> {
+  const shouldSeedDemo =
+    Boolean(options?.includeDemoData) && process.env.NODE_ENV !== 'production';
+
+  if (globalThis._isDatabaseInitialized && !shouldSeedDemo) {
+    return;
   }
 
-  // 7. Moderation Rules (Batch Insert)
-  console.log('Batch seeding moderation rules...');
-  const rulesToInsert = INITIAL_MODERATION_RULES.map((r) => ({
-    id: r.id,
-    title: r.title,
-    type: r.type,
-    action: r.action,
-    keywords: r.keywords || [],
-    threshold: r.threshold ? String(r.threshold) : null,
-    isActive: r.isActive ?? true,
-  }));
-  for (const batch of chunkArray(rulesToInsert, 50)) {
-    await db.insert(schema.moderationRules).values(batch).onConflictDoNothing();
+  if (globalThis._activeSeedPromise) {
+    return globalThis._activeSeedPromise;
   }
 
-  // 8. Email Templates (Batch Insert)
-  console.log('Batch seeding email templates...');
-  const templatesToInsert = INITIAL_EMAIL_TEMPLATES.map((t) => ({
-    id: t.id,
-    name: t.name,
-    category: t.category,
-    subject: t.subject,
-    bodyHtml: t.bodyHtml,
-    bodyText: t.bodyText,
-    actionLabel: t.actionLabel,
-    actionUrl: t.actionUrl,
-    variables: t.variables || [],
-    isActive: t.isActive ?? true,
-    isSystemDefault: t.isSystemDefault ?? false,
-  }));
-  for (const batch of chunkArray(templatesToInsert, 50)) {
-    await db.insert(schema.emailTemplates).values(batch).onConflictDoNothing();
+  globalThis._activeSeedPromise = (async () => {
+    try {
+      await db.transaction(async (tx) => {
+        // 1. Acquire PostgreSQL transaction-level advisory lock on this exact connection
+        // before checking initialization completion. Automatically released on COMMIT or ROLLBACK.
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY_1}, ${ADVISORY_LOCK_KEY_2})`
+        );
+
+        // 2. Check consistent completion marker and core reference table integrity
+        const alreadyInitialized = await checkIsFullyInitialized(tx);
+
+        if (!alreadyInitialized) {
+          await seedEssentialProductionData(tx);
+        }
+
+        if (shouldSeedDemo) {
+          await seedDemoData(tx);
+        }
+      });
+
+      globalThis._isDatabaseInitialized = true;
+    } catch (err) {
+      globalThis._isDatabaseInitialized = false;
+      console.error('[DatabaseInit] Essential database initialization failed:', err);
+      throw err;
+    } finally {
+      globalThis._activeSeedPromise = undefined;
+    }
+  })();
+
+  return globalThis._activeSeedPromise;
+}
+
+/**
+ * Explicit helper for development and test environments to initialize both
+ * essential reference data and demonstration users/listings.
+ */
+export async function seedDevelopmentDatabase(): Promise<void> {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('seedDevelopmentDatabase cannot be run in production.');
   }
+  await ensureDatabaseSeeded({ includeDemoData: true });
+}
 
-  // 9. CMS Pages (Batch Insert)
-  console.log('Batch seeding CMS pages...');
-  const pagesToInsert = INITIAL_CMS_PAGES.map((p) => ({
-    id: p.id,
-    slug: p.slug,
-    title: p.title,
-    content: p.content,
-    seoTitle: (p as any).seoTitle || p.title,
-    seoDescription: (p as any).seoDescription || p.title,
-    isActive: p.status === 'published' || ((p as any).isActive ?? true),
-  }));
-  for (const batch of chunkArray(pagesToInsert, 50)) {
-    await db.insert(schema.cmsPages).values(batch).onConflictDoNothing();
+/**
+ * Backwards-compatible entry point.
+ * In production, runs only essential reference data initialization.
+ * In development/test, supports optional demo seeding when explicitly requested.
+ */
+export async function seedPostgres(options?: { includeDemoData?: boolean }): Promise<void> {
+  const includeDemo =
+    options?.includeDemoData ??
+    (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO_DATA === 'true');
+  await ensureDatabaseSeeded({ includeDemoData: includeDemo });
+}
+
+if (
+  typeof process !== 'undefined' &&
+  Array.isArray(process.argv) &&
+  process.argv[1]?.endsWith('seed-postgres.ts')
+) {
+  const isDemo = process.argv.includes('--demo');
+  const isInit = process.argv.includes('--init');
+  if (isDemo || isInit) {
+    (isDemo ? seedDevelopmentDatabase() : ensureDatabaseSeeded())
+      .then(() => {
+        console.log(
+          isDemo
+            ? '[DatabaseInit] Essential + demo seed completed.'
+            : '[DatabaseInit] Essential production initialization completed.'
+        );
+        process.exit(0);
+      })
+      .catch((err) => {
+        console.error('[DatabaseInit] CLI seed failed:', err);
+        process.exit(1);
+      });
   }
-
-  // 10. System Settings
-  console.log('Batch seeding system settings...');
-  await db.insert(schema.systemSettings).values({
-    id: 'primary',
-    siteName: INITIAL_SETTINGS.siteName || 'Chillyads',
-    defaultCurrency: INITIAL_SETTINGS.defaultCurrency || 'INR',
-    currencySymbol: INITIAL_SETTINGS.currencySymbol || '₹',
-    timezone: INITIAL_SETTINGS.timezone || 'Asia/Kolkata',
-    dateFormat: INITIAL_SETTINGS.dateFormat || 'DD/MM/YYYY',
-    listingDurationDays: INITIAL_SETTINGS.listingDurationDays || 30,
-    freeListingsLimit: INITIAL_SETTINGS.freeListingsLimit || 3,
-    extraListingFee: String(INITIAL_SETTINGS.extraListingFee || 99),
-    maxPhotosPerListing: INITIAL_SETTINGS.maxPhotosPerListing || 5,
-    autoApproveVerifiedUsers: INITIAL_SETTINGS.autoApproveVerifiedUsers ?? false,
-    maintenanceMode: INITIAL_SETTINGS.maintenanceMode ?? false,
-    watermarkImages: INITIAL_SETTINGS.watermarkImages ?? false,
-    aiSpamFilterEnabled: INITIAL_SETTINGS.aiSpamFilterEnabled ?? true,
-    otpLoginEnabled: INITIAL_SETTINGS.otpLoginEnabled ?? true,
-    paidFeaturesConfig: INITIAL_SETTINGS.paidFeatures || (INITIAL_SETTINGS as any).paidFeaturesConfig || {},
-  }).onConflictDoNothing();
-
-  console.log('--- PostgreSQL Database Seeding Complete ---');
 }
