@@ -19,6 +19,14 @@ import { seedCategoriesWithTenAds } from '@/lib/data/listingsSeeder';
 let isDatabaseSeeded = false;
 let activeSeedPromise: Promise<void> | null = null;
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 export async function ensureDatabaseSeeded(): Promise<void> {
   if (isDatabaseSeeded) {
     return;
@@ -50,7 +58,7 @@ export async function ensureDatabaseSeeded(): Promise<void> {
 }
 
 export async function seedPostgres() {
-  console.log('--- Starting PostgreSQL Database Seeding ---');
+  console.log('--- Starting High-Speed Batch PostgreSQL Database Seeding ---');
   const defaultPasswordHash = await hashPassword('Password123!');
   const validCategoryIds = new Set(INITIAL_CATEGORIES.map((c) => c.id));
 
@@ -63,10 +71,10 @@ export async function seedPostgres() {
     return id;
   };
 
-  // 1. Users & Admins
-  console.log('Seeding users & admins...');
-  for (const u of INITIAL_USERS) {
-    await db.insert(schema.users).values({
+  // 1. Users & Admins (Batch Insert)
+  console.log('Batch seeding users & admins...');
+  const usersToInsert = [
+    ...INITIAL_USERS.map((u) => ({
       id: u.id,
       name: u.name,
       email: u.email,
@@ -84,21 +92,18 @@ export async function seedPostgres() {
       businessName: u.businessDetails?.companyName || (u as any).businessName || null,
       gstNumber: u.businessDetails?.gstNumber || (u as any).gstNumber || null,
       verifiedBusiness: u.businessDetails?.verifiedBusiness || (u as any).verifiedBusiness || false,
-      adminRole: null,
-    }).onConflictDoNothing();
-  }
-
-  for (const a of INITIAL_ADMINS) {
-    await db.insert(schema.users).values({
+      adminRole: null as string | null,
+    })),
+    ...INITIAL_ADMINS.map((a) => ({
       id: a.id,
       name: a.name,
       email: a.email,
       phone: '+91 98200 11223',
       passwordHash: defaultPasswordHash,
       avatarUrl: a.avatar,
-      type: 'business',
-      status: 'active',
-      kycStatus: 'verified',
+      type: 'business' as const,
+      status: 'active' as const,
+      kycStatus: 'verified' as const,
       emailSubscribed: true,
       city: 'Mumbai',
       state: 'Maharashtra',
@@ -107,55 +112,69 @@ export async function seedPostgres() {
       businessName: 'Chillyads Staff',
       verifiedBusiness: true,
       adminRole: a.role,
-    }).onConflictDoNothing();
+    })),
+  ];
+
+  for (const batch of chunkArray(usersToInsert, 50)) {
+    await db.insert(schema.users).values(batch).onConflictDoNothing();
   }
 
-  // 2. Categories: Insert parents first, then children
-  console.log('Seeding categories...');
+  // 2. Categories (Batch Insert: Parents first, then Children)
+  console.log('Batch seeding categories...');
+  const parentCategories = INITIAL_CATEGORIES.filter((c) => !c.parentId);
+  const childCategories = INITIAL_CATEGORIES.filter((c) => c.parentId);
 
-  for (const c of INITIAL_CATEGORIES) {
-    await db.insert(schema.categories).values({
-      id: c.id,
-      name: c.name,
-      slug: c.slug,
-      icon: c.icon,
-      parentId: c.parentId || null,
-      orderIndex: c.order || (c as any).orderIndex || 0,
-      isActive: c.isActive ?? true,
-      seoTitle: c.seoTitle,
-      seoDescription: c.seoDescription,
-      isPaid: c.isPaid ?? false,
-      postingFee: String(c.postingFee || 0),
-      freeListingsQuota: c.freeListingsQuota ?? 3,
-    }).onConflictDoNothing();
+  const mapCategory = (c: typeof INITIAL_CATEGORIES[0]) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    icon: c.icon,
+    parentId: c.parentId || null,
+    orderIndex: c.order || (c as any).orderIndex || 0,
+    isActive: c.isActive ?? true,
+    seoTitle: c.seoTitle || null,
+    seoDescription: c.seoDescription || null,
+    isPaid: c.isPaid ?? false,
+    postingFee: String(c.postingFee || 0),
+    freeListingsQuota: c.freeListingsQuota ?? 3,
+  });
+
+  for (const batch of chunkArray(parentCategories.map(mapCategory), 50)) {
+    await db.insert(schema.categories).values(batch).onConflictDoNothing();
+  }
+  for (const batch of chunkArray(childCategories.map(mapCategory), 50)) {
+    await db.insert(schema.categories).values(batch).onConflictDoNothing();
   }
 
-  // 3. Custom Fields (EAV)
-  console.log('Seeding custom fields...');
-  for (const f of INITIAL_CUSTOM_FIELDS) {
-    const catId = resolveCategoryId(f.categoryId);
+  // 3. Custom Fields (Batch Insert)
+  console.log('Batch seeding custom fields...');
+  const customFieldsToInsert = INITIAL_CUSTOM_FIELDS.map((f) => ({
+    id: f.id,
+    categoryId: resolveCategoryId(f.categoryId),
+    name: f.name,
+    label: f.label,
+    type: f.type,
+    options: f.options || [],
+    unit: f.unit || null,
+    required: f.required ?? false,
+    filterable: f.filterable ?? true,
+    orderIndex: f.orderIndex || 0,
+  }));
 
-    await db.insert(schema.categoryCustomFields).values({
-      id: f.id,
-      categoryId: catId,
-      name: f.name,
-      label: f.label,
-      type: f.type,
-      options: f.options || [],
-      unit: f.unit,
-      required: f.required ?? false,
-      filterable: f.filterable ?? true,
-      orderIndex: f.orderIndex || 0,
-    }).onConflictDoNothing();
+  for (const batch of chunkArray(customFieldsToInsert, 50)) {
+    await db.insert(schema.categoryCustomFields).values(batch).onConflictDoNothing();
   }
 
-  // 4. Locations: Insert country first, then states, then cities, then localities
-  console.log('Seeding locations...');
-  for (const loc of INITIAL_LOCATIONS) {
+  // 4. Locations (Batch Insert: Parents first, then Children)
+  console.log('Batch seeding locations...');
+  const rootLocations = INITIAL_LOCATIONS.filter((l) => !l.parentId);
+  const childLocations = INITIAL_LOCATIONS.filter((l) => l.parentId);
+
+  const mapLocation = (loc: typeof INITIAL_LOCATIONS[0]) => {
     const anyLoc = loc as any;
     const s = anyLoc.slug || loc.name.toLowerCase().replace(/\s+/g, '-');
     const g = anyLoc.geoId || (loc.id === 'loc_in' ? 'g0' : `g_${loc.id}`);
-    await db.insert(schema.locations).values({
+    return {
       id: loc.id,
       type: loc.type,
       name: loc.name,
@@ -167,128 +186,149 @@ export async function seedPostgres() {
       longitude: anyLoc.longitude || null,
       popular: loc.popular ?? false,
       orderIndex: anyLoc.orderIndex || anyLoc.order || 0,
-    }).onConflictDoNothing();
+    };
+  };
+
+  for (const batch of chunkArray(rootLocations.map(mapLocation), 50)) {
+    await db.insert(schema.locations).values(batch).onConflictDoNothing();
+  }
+  for (const batch of chunkArray(childLocations.map(mapLocation), 50)) {
+    await db.insert(schema.locations).values(batch).onConflictDoNothing();
   }
 
-  // 5. Listings
-  console.log('Seeding listings...');
+  // 5. Listings (Batch Insert)
+  console.log('Batch seeding listings...');
   const seeded = seedCategoriesWithTenAds(INITIAL_LISTINGS);
+
+  // Collect and batch insert any missing sellers
+  const sellerMap = new Map<string, any>();
   for (const l of seeded) {
-    // Ensure seller exists
-    await db.insert(schema.users).values({
-      id: l.sellerId,
-      name: l.sellerName,
-      email: `${l.sellerId}@chillyads.com`,
-      phone: l.sellerPhone || '+91 98000 00000',
-      city: l.location?.city || 'Mumbai',
-      state: l.location?.state || 'Maharashtra',
-    }).onConflictDoNothing();
-
-    const expiresDate = new Date();
-    expiresDate.setDate(expiresDate.getDate() + 30);
-
-    const cId = resolveCategoryId(l.categoryId);
-
-    await db.insert(schema.listings).values({
-      id: l.id,
-      sellerId: l.sellerId,
-      sellerName: l.sellerName,
-      sellerPhone: l.sellerPhone,
-      categoryId: cId,
-      subcategoryId: l.subcategoryId || null,
-      title: l.title,
-      description: l.description,
-      price: String(l.price),
-      state: l.location?.state || 'Maharashtra',
-      city: l.location?.city || 'Mumbai',
-      locality: l.location?.locality || 'Andheri West',
-      latitude: l.location?.latitude || 19.076,
-      longitude: l.location?.longitude || 72.8777,
-      images: l.images || [],
-      customAttributes: l.customAttributes || {},
-      status: l.status || 'approved',
-      isFeatured: l.isFeatured ?? false,
-      featuredUntil: l.featuredUntil ? new Date(l.featuredUntil) : null,
-      isBoosted: l.isBoosted ?? false,
-      boostStatus: l.boostStatus || 'inactive',
-      boostViews: l.boostViews || 0,
-      boostImpressions: l.boostImpressions || 0,
-      boostClicks: l.boostClicks || 0,
-      views: l.views || 0,
-      likes: l.likes || 0,
-      chatsCount: l.chatsCount || 0,
-      spamScore: l.spamScore || 0,
-      expiresAt: expiresDate,
-    }).onConflictDoNothing();
+    if (!sellerMap.has(l.sellerId)) {
+      sellerMap.set(l.sellerId, {
+        id: l.sellerId,
+        name: l.sellerName,
+        email: `${l.sellerId}@chillyads.com`,
+        phone: l.sellerPhone || '+91 98000 00000',
+        city: l.location?.city || 'Mumbai',
+        state: l.location?.state || 'Maharashtra',
+      });
+    }
   }
 
-  // 6. Boost Packages
-  console.log('Seeding boost packages...');
-  for (const p of INITIAL_PACKAGES) {
-    await db.insert(schema.boostPackages).values({
-      id: p.id,
-      name: p.name,
-      badge: p.badge,
-      type: p.type || 'boost',
-      durationDays: p.durationDays || 1,
-      durationHours: p.durationHours || 24,
-      price: String(p.price),
-      discountPrice: p.discountPrice ? String(p.discountPrice) : null,
-      currency: p.currency || 'INR',
-      features: p.features || [],
-      isActive: p.isActive ?? true,
-      salesCount: p.salesCount || 0,
-    }).onConflictDoNothing();
+  for (const batch of chunkArray(Array.from(sellerMap.values()), 50)) {
+    await db.insert(schema.users).values(batch).onConflictDoNothing();
   }
 
-  // 7. Moderation Rules
-  console.log('Seeding moderation rules...');
-  for (const r of INITIAL_MODERATION_RULES) {
-    await db.insert(schema.moderationRules).values({
-      id: r.id,
-      title: r.title,
-      type: r.type,
-      action: r.action,
-      keywords: r.keywords || [],
-      threshold: r.threshold ? String(r.threshold) : null,
-      isActive: r.isActive ?? true,
-    }).onConflictDoNothing();
+  const expiresDate = new Date();
+  expiresDate.setDate(expiresDate.getDate() + 30);
+
+  const listingsToInsert = seeded.map((l) => ({
+    id: l.id,
+    sellerId: l.sellerId,
+    sellerName: l.sellerName,
+    sellerPhone: l.sellerPhone || '',
+    categoryId: resolveCategoryId(l.categoryId),
+    subcategoryId: l.subcategoryId || null,
+    title: l.title,
+    description: l.description,
+    price: String(l.price),
+    state: l.location?.state || 'Maharashtra',
+    city: l.location?.city || 'Mumbai',
+    locality: l.location?.locality || 'Andheri West',
+    latitude: l.location?.latitude || 19.076,
+    longitude: l.location?.longitude || 72.8777,
+    images: l.images || [],
+    customAttributes: l.customAttributes || {},
+    status: l.status || 'approved',
+    isFeatured: l.isFeatured ?? false,
+    featuredUntil: l.featuredUntil ? new Date(l.featuredUntil) : null,
+    isBoosted: l.isBoosted ?? false,
+    boostStatus: l.boostStatus || 'inactive',
+    boostViews: l.boostViews || 0,
+    boostImpressions: l.boostImpressions || 0,
+    boostClicks: l.boostClicks || 0,
+    views: l.views || 0,
+    likes: l.likes || 0,
+    chatsCount: l.chatsCount || 0,
+    spamScore: l.spamScore || 0,
+    expiresAt: expiresDate,
+  }));
+
+  for (const batch of chunkArray(listingsToInsert, 50)) {
+    await db.insert(schema.listings).values(batch).onConflictDoNothing();
   }
 
-  // 8. Email Templates
-  console.log('Seeding email templates...');
-  for (const t of INITIAL_EMAIL_TEMPLATES) {
-    await db.insert(schema.emailTemplates).values({
-      id: t.id,
-      name: t.name,
-      category: t.category,
-      subject: t.subject,
-      bodyHtml: t.bodyHtml,
-      bodyText: t.bodyText,
-      actionLabel: t.actionLabel,
-      actionUrl: t.actionUrl,
-      variables: t.variables || [],
-      isActive: t.isActive ?? true,
-      isSystemDefault: t.isSystemDefault ?? false,
-    }).onConflictDoNothing();
+  // 6. Boost Packages (Batch Insert)
+  console.log('Batch seeding boost packages...');
+  const packagesToInsert = INITIAL_PACKAGES.map((p) => ({
+    id: p.id,
+    name: p.name,
+    badge: p.badge,
+    type: p.type || 'boost',
+    durationDays: p.durationDays || 1,
+    durationHours: p.durationHours || 24,
+    price: String(p.price),
+    discountPrice: p.discountPrice ? String(p.discountPrice) : null,
+    currency: p.currency || 'INR',
+    features: p.features || [],
+    isActive: p.isActive ?? true,
+    salesCount: p.salesCount || 0,
+  }));
+  for (const batch of chunkArray(packagesToInsert, 50)) {
+    await db.insert(schema.boostPackages).values(batch).onConflictDoNothing();
   }
 
-  // 9. CMS Pages
-  console.log('Seeding CMS pages...');
-  for (const p of INITIAL_CMS_PAGES) {
-    await db.insert(schema.cmsPages).values({
-      id: p.id,
-      slug: p.slug,
-      title: p.title,
-      content: p.content,
-      seoTitle: (p as any).seoTitle || p.title,
-      seoDescription: (p as any).seoDescription || p.title,
-      isActive: p.status === 'published' || ((p as any).isActive ?? true),
-    }).onConflictDoNothing();
+  // 7. Moderation Rules (Batch Insert)
+  console.log('Batch seeding moderation rules...');
+  const rulesToInsert = INITIAL_MODERATION_RULES.map((r) => ({
+    id: r.id,
+    title: r.title,
+    type: r.type,
+    action: r.action,
+    keywords: r.keywords || [],
+    threshold: r.threshold ? String(r.threshold) : null,
+    isActive: r.isActive ?? true,
+  }));
+  for (const batch of chunkArray(rulesToInsert, 50)) {
+    await db.insert(schema.moderationRules).values(batch).onConflictDoNothing();
+  }
+
+  // 8. Email Templates (Batch Insert)
+  console.log('Batch seeding email templates...');
+  const templatesToInsert = INITIAL_EMAIL_TEMPLATES.map((t) => ({
+    id: t.id,
+    name: t.name,
+    category: t.category,
+    subject: t.subject,
+    bodyHtml: t.bodyHtml,
+    bodyText: t.bodyText,
+    actionLabel: t.actionLabel,
+    actionUrl: t.actionUrl,
+    variables: t.variables || [],
+    isActive: t.isActive ?? true,
+    isSystemDefault: t.isSystemDefault ?? false,
+  }));
+  for (const batch of chunkArray(templatesToInsert, 50)) {
+    await db.insert(schema.emailTemplates).values(batch).onConflictDoNothing();
+  }
+
+  // 9. CMS Pages (Batch Insert)
+  console.log('Batch seeding CMS pages...');
+  const pagesToInsert = INITIAL_CMS_PAGES.map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    title: p.title,
+    content: p.content,
+    seoTitle: (p as any).seoTitle || p.title,
+    seoDescription: (p as any).seoDescription || p.title,
+    isActive: p.status === 'published' || ((p as any).isActive ?? true),
+  }));
+  for (const batch of chunkArray(pagesToInsert, 50)) {
+    await db.insert(schema.cmsPages).values(batch).onConflictDoNothing();
   }
 
   // 10. System Settings
-  console.log('Seeding system settings...');
+  console.log('Batch seeding system settings...');
   await db.insert(schema.systemSettings).values({
     id: 'primary',
     siteName: INITIAL_SETTINGS.siteName || 'Chillyads',

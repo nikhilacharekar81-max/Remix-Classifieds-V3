@@ -1,8 +1,5 @@
-'use client';
-import React, { useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
+import React from 'react';
 import { NavLink } from '@/components/common/NavLink';
-import { useAppOptional } from '@/context/AppContextInstance';
 import { Category } from '@/lib/types';
 import {
   ShieldCheck,
@@ -19,24 +16,9 @@ import {
   FileCode,
   MapPin,
 } from 'lucide-react';
-import { navigateTo } from '@/lib/router/useRouter';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
-
-const CmsPageModal = dynamic(() =>
-  import('@/components/common/CmsPageModal').then((m) => m.CmsPageModal)
-);
-const ReportModal = dynamic(() =>
-  import('@/components/common/ReportModal').then((m) => m.ReportModal)
-);
-const CmpConsentModal = dynamic(() =>
-  import('@/components/common/CmpConsentModal').then((m) => m.CmpConsentModal)
-);
-const UsPrivacyModal = dynamic(() =>
-  import('@/components/common/UsPrivacyModal').then((m) => m.UsPrivacyModal)
-);
-const EeatSchemaModal = dynamic(() =>
-  import('@/components/common/EeatSchemaModal').then((m) => m.EeatSchemaModal)
-);
+import { FooterModalButton } from './FooterModalButton';
+import { FooterModalsIsland } from './FooterModalsIsland';
 
 const DEFAULT_ACTIVE_CITIES: Array<{ name: string; count: number }> = [
   { name: 'Mumbai', count: 84 },
@@ -56,106 +38,12 @@ export interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({
-  categories: propCategories,
-  activeCities: propActiveCities,
-  enablePrivacyChoices,
+  categories = [],
+  activeCities = DEFAULT_ACTIVE_CITIES,
+  enablePrivacyChoices = false,
 }) => {
-  const app = useAppOptional();
-
-  const [localCmsSlug, setLocalCmsSlug] = useState<string | null>(null);
-  const [localReportConfig, setLocalReportConfig] = useState<{
-    open: boolean;
-    type: 'ad' | 'user';
-    targetId?: string;
-  } | null>(null);
-  const [localCmpOpen, setLocalCmpOpen] = useState(false);
-  const [localUsPrivacyOpen, setLocalUsPrivacyOpen] = useState(false);
-  const [localEeatOpen, setLocalEeatOpen] = useState(false);
-
-  const categories = propCategories || app?.categories || [];
-  const privacyEnabled =
-    enablePrivacyChoices !== undefined
-      ? enablePrivacyChoices
-      : app?.settings?.enablePrivacyChoices ?? false;
-
-  const openCmsPageModal = (slug: string) => {
-    if (app?.openCmsPageModal) {
-      app.openCmsPageModal(slug);
-    } else {
-      setLocalCmsSlug(slug);
-    }
-  };
-
-  const openReportModal = (type: 'ad' | 'user', targetId?: string) => {
-    if (app?.openReportModal) {
-      app.openReportModal(type, targetId);
-    } else {
-      setLocalReportConfig({ open: true, type, targetId });
-    }
-  };
-
-  const openCmpModal = () => {
-    if (app?.openCmpModal) {
-      app.openCmpModal();
-    } else {
-      setLocalCmpOpen(true);
-    }
-  };
-
-  const openUsPrivacyModal = () => {
-    if (app?.openUsPrivacyModal) {
-      app.openUsPrivacyModal();
-    } else {
-      setLocalUsPrivacyOpen(true);
-    }
-  };
-
-  const openEeatModal = () => {
-    if (app?.openEeatModal) {
-      app.openEeatModal();
-    } else {
-      setLocalEeatOpen(true);
-    }
-  };
-
-  const activeCitiesWithListings = useMemo(() => {
-    if (propActiveCities && propActiveCities.length > 0) {
-      return propActiveCities;
-    }
-    const listings = app?.listings || [];
-    if (listings.length === 0) {
-      return DEFAULT_ACTIVE_CITIES;
-    }
-    const cityCounts: Record<string, number> = {};
-    listings.forEach((listing) => {
-      if (listing.status === 'approved' && listing.location?.city) {
-        const city = listing.location.city.trim();
-        cityCounts[city] = (cityCounts[city] || 0) + 1;
-      }
-    });
-
-    const computed = Object.entries(cityCounts)
-      .filter(([_, count]) => count > 0)
-      .map(([cityName, count]) => ({ name: cityName, count }))
-      .sort((a, b) => b.count - a.count);
-
-    return computed.length > 0 ? computed : DEFAULT_ACTIVE_CITIES;
-  }, [propActiveCities, app?.listings]);
-
-  const handleCategoryClick = (catId: string) => {
-    app?.setSelectedMarketplaceCategory?.(catId);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleCityClick = (cityName: string) => {
-    app?.setSelectedMarketplaceCity?.(cityName);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleAdminClick = () => {
-    app?.setViewMode?.('admin');
-    navigateTo('/admin');
-  };
+  const rootCategories = categories.filter((cat) => !cat.parentId && cat.isActive);
+  const citiesList = activeCities && activeCities.length > 0 ? activeCities : DEFAULT_ACTIVE_CITIES;
 
   return (
     <footer className="bg-slate-900 text-slate-300 pt-10 pb-28 sm:pb-24 md:pb-12 border-t border-slate-800 font-sans mt-16 shadow-2xl">
@@ -188,14 +76,14 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
 
           {/* [E-E-A-T Credentials Schema Link] Button */}
-          <button
-            onClick={openEeatModal}
+          <FooterModalButton
+            modalEvent={{ type: 'eeat' }}
             className="px-4 py-3 rounded-xl bg-gradient-to-r from-blue-900/90 to-indigo-900/90 hover:from-blue-800 hover:to-indigo-800 text-white border border-blue-500/40 font-bold text-xs flex items-center gap-2.5 shadow-md hover:shadow-blue-500/10 transition-all shrink-0 min-h-[48px] min-w-[220px] justify-center cursor-pointer"
           >
             <Award className="w-4 h-4 text-yellow-400" />
             <span>E-E-A-T Credentials &amp; Schema Graph</span>
             <FileCode className="w-3.5 h-3.5 text-blue-300" />
-          </button>
+          </FooterModalButton>
         </div>
 
         {/* ================= COMPLIANCE & ARCHITECTURE MATRIX (4 COLUMNS) ================= */}
@@ -211,8 +99,8 @@ export const Footer: React.FC<FooterProps> = ({
 
             <ul className="space-y-1">
               <li>
-                <button
-                  onClick={() => openCmsPageModal('contact-us')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'contact-us' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -220,12 +108,12 @@ export const Footer: React.FC<FooterProps> = ({
                     Grievance Officer
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={() => openCmsPageModal('contact-us')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'contact-us' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -233,12 +121,12 @@ export const Footer: React.FC<FooterProps> = ({
                     Nodal Desk (Govt / Law)
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={() => openReportModal('ad')}
+                <FooterModalButton
+                  modalEvent={{ type: 'report', reportType: 'ad' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -246,12 +134,12 @@ export const Footer: React.FC<FooterProps> = ({
                     Report Fraud / Bad Ad
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={() => openCmsPageModal('terms-and-conditions')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'terms-and-conditions' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -259,7 +147,7 @@ export const Footer: React.FC<FooterProps> = ({
                     Intermediary Rules 2021
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
             </ul>
           </div>
@@ -275,8 +163,8 @@ export const Footer: React.FC<FooterProps> = ({
 
             <ul className="space-y-1">
               <li>
-                <button
-                  onClick={() => openCmsPageModal('safety-tips')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'safety-tips' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -284,12 +172,12 @@ export const Footer: React.FC<FooterProps> = ({
                     Anti-Scam Guidelines
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={() => openCmsPageModal('editorial-guidelines')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'editorial-guidelines' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -297,12 +185,12 @@ export const Footer: React.FC<FooterProps> = ({
                     Prohibited Items List
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={() => openCmsPageModal('help-support')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'help-support' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -310,12 +198,12 @@ export const Footer: React.FC<FooterProps> = ({
                     How Posting Works
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={openEeatModal}
+                <FooterModalButton
+                  modalEvent={{ type: 'eeat' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -323,7 +211,7 @@ export const Footer: React.FC<FooterProps> = ({
                     E-E-A-T Credentials &amp; Schema
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
             </ul>
           </div>
@@ -339,8 +227,8 @@ export const Footer: React.FC<FooterProps> = ({
 
             <ul className="space-y-1">
               <li>
-                <button
-                  onClick={() => openCmsPageModal('sitemap')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'sitemap' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -348,12 +236,12 @@ export const Footer: React.FC<FooterProps> = ({
                     Category Sitemap
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={() => openCmsPageModal('sitemap')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'sitemap' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -361,12 +249,12 @@ export const Footer: React.FC<FooterProps> = ({
                     HTML Sitemap &amp; Directory
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={() => openCmsPageModal('editorial-guidelines')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'editorial-guidelines' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -374,12 +262,12 @@ export const Footer: React.FC<FooterProps> = ({
                     Editorial Guidelines
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={() => openCmsPageModal('corrections-policy')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'corrections-policy' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -387,7 +275,7 @@ export const Footer: React.FC<FooterProps> = ({
                     Corrections Policy
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
             </ul>
           </div>
@@ -403,8 +291,8 @@ export const Footer: React.FC<FooterProps> = ({
 
             <ul className="space-y-1">
               <li>
-                <button
-                  onClick={() => openCmsPageModal('privacy-policy')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'privacy-policy' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -412,12 +300,12 @@ export const Footer: React.FC<FooterProps> = ({
                     Privacy Policy
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={() => openCmsPageModal('terms-and-conditions')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'terms-and-conditions' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -425,12 +313,12 @@ export const Footer: React.FC<FooterProps> = ({
                     Terms of Use
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={() => openCmsPageModal('dmca-takedown')}
+                <FooterModalButton
+                  modalEvent={{ type: 'cms', slug: 'dmca-takedown' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -438,12 +326,12 @@ export const Footer: React.FC<FooterProps> = ({
                     DMCA / Takedown
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                </button>
+                </FooterModalButton>
               </li>
 
               <li>
-                <button
-                  onClick={openCmpModal}
+                <FooterModalButton
+                  modalEvent={{ type: 'cmp' }}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
@@ -453,13 +341,13 @@ export const Footer: React.FC<FooterProps> = ({
                   <span className="px-2 py-0.5 rounded text-[10px] bg-purple-900/60 text-purple-300 border border-purple-700/50 font-bold">
                     CMP
                   </span>
-                </button>
+                </FooterModalButton>
               </li>
 
-              {privacyEnabled && (
+              {enablePrivacyChoices && (
                 <li>
-                  <button
-                    onClick={openUsPrivacyModal}
+                  <FooterModalButton
+                    modalEvent={{ type: 'us-privacy' }}
                     className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-slate-800/80 text-slate-300 hover:text-white transition flex items-center justify-between text-xs font-semibold min-h-[48px] cursor-pointer"
                   >
                     <span className="flex items-center gap-2.5">
@@ -475,7 +363,7 @@ export const Footer: React.FC<FooterProps> = ({
                     <span className="px-2 py-0.5 rounded text-[10px] bg-blue-900/60 text-blue-300 border border-blue-700/50 font-bold">
                       CPRA
                     </span>
-                  </button>
+                  </FooterModalButton>
                 </li>
               )}
             </ul>
@@ -490,21 +378,18 @@ export const Footer: React.FC<FooterProps> = ({
               Explore Popular Categories (Canonical Static URLs)
             </h4>
             <div className="flex flex-wrap gap-2 text-xs">
-              {categories
-                .filter((cat) => !cat.parentId && cat.isActive)
-                .map((cat) => {
-                  const canonicalUrl = buildChillyUrl({ categoryId: cat.id, categories });
-                  return (
-                    <NavLink
-                      key={cat.id}
-                      href={canonicalUrl}
-                      onClick={() => handleCategoryClick(cat.id)}
-                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition min-h-[48px] flex items-center font-medium border border-slate-700/40 cursor-pointer"
-                    >
-                      {cat.name}
-                    </NavLink>
-                  );
-                })}
+              {rootCategories.map((cat) => {
+                const canonicalUrl = buildChillyUrl({ categoryId: cat.id, categories });
+                return (
+                  <NavLink
+                    key={cat.id}
+                    href={canonicalUrl}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition min-h-[48px] flex items-center font-medium border border-slate-700/40 cursor-pointer"
+                  >
+                    {cat.name}
+                  </NavLink>
+                );
+              })}
             </div>
           </div>
 
@@ -521,20 +406,18 @@ export const Footer: React.FC<FooterProps> = ({
             <div className="flex flex-wrap gap-1.5 text-xs">
               <NavLink
                 href={buildChillyUrl({ city: 'All India', categories })}
-                onClick={() => handleCityClick('All India')}
                 className="px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 font-bold transition border border-emerald-700/50 flex items-center gap-1 min-h-[44px] cursor-pointer"
               >
                 <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span>All India</span>
               </NavLink>
 
-              {activeCitiesWithListings.map(({ name, count }) => {
+              {citiesList.map(({ name, count }) => {
                 const canonicalUrl = buildChillyUrl({ city: name, categories });
                 return (
                   <NavLink
                     key={name}
                     href={canonicalUrl}
-                    onClick={() => handleCityClick(name)}
                     className="px-2.5 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 transition text-xs font-medium border border-slate-700/50 flex items-center gap-1.5 min-h-[44px] cursor-pointer"
                   >
                     <MapPin className="w-3 h-3 text-cyan-400 shrink-0" />
@@ -554,25 +437,25 @@ export const Footer: React.FC<FooterProps> = ({
               Trust &amp; Safety Actions
             </h4>
             <div className="flex flex-col gap-2">
-              <button
-                onClick={() => openReportModal('ad')}
+              <FooterModalButton
+                modalEvent={{ type: 'report', reportType: 'ad' }}
                 className="w-full text-left px-3.5 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold flex items-center justify-between border border-red-500/20 transition min-h-[48px] cursor-pointer"
               >
                 <span className="flex items-center gap-2 text-xs">
                   <Flag className="w-4 h-4 shrink-0" /> Report Suspicious Ad
                 </span>
                 <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+              </FooterModalButton>
 
-              <button
-                onClick={() => openReportModal('user')}
+              <FooterModalButton
+                modalEvent={{ type: 'report', reportType: 'user' }}
                 className="w-full text-left px-3.5 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-semibold flex items-center justify-between border border-amber-500/20 transition min-h-[48px] cursor-pointer"
               >
                 <span className="flex items-center gap-2 text-xs">
                   <UserX className="w-4 h-4 shrink-0" /> Report Scammer / User
                 </span>
                 <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+              </FooterModalButton>
             </div>
           </div>
         </div>
@@ -587,51 +470,51 @@ export const Footer: React.FC<FooterProps> = ({
               © 2026 Chillyads India Pvt Ltd. Registered under Information Technology
               (Intermediaries) Rules, 2021.
             </span>
-            <button
-              onClick={handleAdminClick}
+            <NavLink
+              href="/admin"
               className="text-slate-400 hover:text-white underline font-medium flex items-center gap-1 min-h-[48px] px-2 cursor-pointer"
             >
               <SlidersHorizontal className="w-3 h-3" /> Admin CMS
-            </button>
+            </NavLink>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 text-[11px]">
-            <button
-              onClick={() => openCmsPageModal('help-support')}
+            <FooterModalButton
+              modalEvent={{ type: 'cms', slug: 'help-support' }}
               className="hover:text-slate-300 text-emerald-400 font-bold min-h-[48px] px-1 flex items-center cursor-pointer"
             >
               Help &amp; Support
-            </button>
+            </FooterModalButton>
             <span>•</span>
-            <button
-              onClick={() => openCmsPageModal('privacy-policy')}
+            <FooterModalButton
+              modalEvent={{ type: 'cms', slug: 'privacy-policy' }}
               className="hover:text-slate-300 min-h-[48px] px-1 flex items-center cursor-pointer"
             >
               Privacy Policy
-            </button>
+            </FooterModalButton>
             <span>•</span>
-            <button
-              onClick={() => openCmsPageModal('terms-and-conditions')}
+            <FooterModalButton
+              modalEvent={{ type: 'cms', slug: 'terms-and-conditions' }}
               className="hover:text-slate-300 min-h-[48px] px-1 flex items-center cursor-pointer"
             >
               Terms &amp; Conditions
-            </button>
+            </FooterModalButton>
             <span>•</span>
-            <button
-              onClick={() => openCmsPageModal('dmca-takedown')}
+            <FooterModalButton
+              modalEvent={{ type: 'cms', slug: 'dmca-takedown' }}
               className="hover:text-slate-300 min-h-[48px] px-1 flex items-center cursor-pointer"
             >
               DMCA Takedown
-            </button>
-            {privacyEnabled && (
+            </FooterModalButton>
+            {enablePrivacyChoices && (
               <>
                 <span>•</span>
-                <button
-                  onClick={openCmpModal}
+                <FooterModalButton
+                  modalEvent={{ type: 'cmp' }}
                   className="hover:text-slate-300 text-purple-400 font-semibold min-h-[48px] px-1 flex items-center cursor-pointer"
                 >
                   Cookie Preferences
-                </button>
+                </FooterModalButton>
               </>
             )}
           </div>
@@ -641,32 +524,8 @@ export const Footer: React.FC<FooterProps> = ({
         <div className="h-[30px] w-full shrink-0 md:hidden" aria-hidden="true" />
       </div>
 
-      {/* Standalone dynamic modals for Server-First pages without AppContext */}
-      {!app && localCmsSlug && (
-        <CmsPageModal slug={localCmsSlug} onClose={() => setLocalCmsSlug(null)} />
-      )}
-      {!app && localReportConfig?.open && (
-        <ReportModal
-          reportConfig={localReportConfig}
-          onClose={() => setLocalReportConfig(null)}
-        />
-      )}
-      {!app && localCmpOpen && (
-        <CmpConsentModal isOpen={localCmpOpen} onClose={() => setLocalCmpOpen(false)} />
-      )}
-      {!app && localUsPrivacyOpen && (
-        <UsPrivacyModal
-          isOpen={localUsPrivacyOpen}
-          onClose={() => setLocalUsPrivacyOpen(false)}
-        />
-      )}
-      {!app && localEeatOpen && (
-        <EeatSchemaModal
-          isOpen={localEeatOpen}
-          onClose={() => setLocalEeatOpen(false)}
-          onOpenCmsPage={(slug) => setLocalCmsSlug(slug)}
-        />
-      )}
+      {/* Standalone dynamic modals managed by client island */}
+      <FooterModalsIsland enablePrivacyChoices={enablePrivacyChoices} />
     </footer>
   );
 };

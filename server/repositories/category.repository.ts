@@ -30,13 +30,24 @@ export class CategoryRepository {
    */
   public async findAllHierarchy(): Promise<Category[]> {
     try {
-      await ensureDatabaseSeeded();
-      const rows = await withDbRetry(() =>
+      let rows = await withDbRetry(() =>
         db
           .select()
           .from(schema.categories)
           .orderBy(asc(schema.categories.orderIndex))
       );
+
+      // Only run seeding on first-time boot if categories table is completely empty
+      if (rows.length === 0) {
+        await ensureDatabaseSeeded();
+        rows = await withDbRetry(() =>
+          db
+            .select()
+            .from(schema.categories)
+            .orderBy(asc(schema.categories.orderIndex))
+        );
+      }
+
       return rows.map((r) => this.mapRowToCategory(r, 0));
     } catch (error) {
       console.error('CategoryRepository.findAllHierarchy error:', error);
