@@ -54,7 +54,32 @@ export const PublicListingGalleryIsland: React.FC<{ listing: Listing }> = ({ lis
 
 export const PublicListingOfferIsland: React.FC<{ listing: Listing }> = ({ listing }) => {
   const [showPhone, setShowPhone] = useState(false);
+  const [revealedPhone, setRevealedPhone] = useState<string | null>(null);
+  const [isRevealingPhone, setIsRevealingPhone] = useState(false);
   const [isBoostModalOpen, setIsBoostModalOpen] = useState(false);
+
+  const handleRevealPhone = async () => {
+    if (revealedPhone || listing.sellerPhone) {
+      setShowPhone(true);
+      return;
+    }
+
+    setIsRevealingPhone(true);
+    try {
+      const res = await fetch(`/api/listings/${encodeURIComponent(listing.id)}/reveal-phone`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.phone) {
+          setRevealedPhone(data.phone);
+          setShowPhone(true);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to reveal seller phone:', err);
+    } finally {
+      setIsRevealingPhone(false);
+    }
+  };
 
   return (
     <>
@@ -62,7 +87,9 @@ export const PublicListingOfferIsland: React.FC<{ listing: Listing }> = ({ listi
         listing={listing}
         isOwner={false}
         showPhone={showPhone}
-        onRevealPhone={() => setShowPhone(true)}
+        revealedPhone={revealedPhone}
+        isRevealingPhone={isRevealingPhone}
+        onRevealPhone={handleRevealPhone}
         onOpenBoostModal={() => setIsBoostModalOpen(true)}
       />
 

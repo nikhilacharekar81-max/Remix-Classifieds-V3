@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       freeListingsQuota: body.freeListingsQuota ?? 3,
     });
 
-    invalidateCategoryReferenceCache();
+    await invalidateCategoryReferenceCache();
 
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {

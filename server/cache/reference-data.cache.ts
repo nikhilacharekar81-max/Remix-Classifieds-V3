@@ -54,12 +54,13 @@ export function isListingCacheBypassed(): boolean {
 /**
  * Enqueues a durable 'pending' cache invalidation outbox entry in PostgreSQL.
  * When called with a transaction executor `tx`, uses the exact same transaction connection
- * and propagates errors so the listing mutation and outbox record commit or roll back atomically.
+ * and propagates errors so the mutation and outbox record commit or roll back atomically.
+ * Increments generation `attempts` on conflict so any in-flight workers know a newer event occurred.
  */
 export async function enqueueDurableInvalidation(
   tag: string = REFERENCE_CACHE_TAGS.LISTING_COUNTS,
   tx?: DbExecutor
-): Promise<void> {
+): Promise<{ id: string; generation?: number }> {
   const now = new Date();
   const id = `outbox_${tag}`;
   const executor = tx ?? db;
@@ -71,7 +72,7 @@ export async function enqueueDurableInvalidation(
         id,
         tag,
         status: 'pending',
-        attempts: 0,
+        attempts: 1,
         lastError: null,
         nextRetryAt: now,
         completedAt: null,
@@ -80,60 +81,81 @@ export async function enqueueDurableInvalidation(
         target: cacheInvalidationOutbox.tag,
         set: {
           status: 'pending',
-          attempts: 0,
+          attempts: sql`${cacheInvalidationOutbox.attempts} + 1`,
           lastError: null,
           nextRetryAt: now,
           completedAt: null,
         },
+      })
+      .returning({
+        id: cacheInvalidationOutbox.id,
+        generation: cacheInvalidationOutbox.attempts,
       });
 
+  let res: { id: string; generation: number }[];
   if (tx) {
-    await performUpsert();
+    res = await performUpsert();
   } else {
-    await withDbRetry(performUpsert);
+    res = await withDbRetry(performUpsert);
   }
 
   ensureOutboxRetryWorkerStarted();
+  return { id, generation: res?.[0]?.generation };
 }
 
 /**
  * Records or completes a durable cache invalidation entry in PostgreSQL.
- * Deduplicated per tag so entries do not grow unbounded.
+ * Generation-aware: never overwrites a newer pending invalidation or a leased worker claim.
  */
 export async function recordDurableInvalidation(
   tag: string,
   success: boolean,
   errMessage?: string,
-  tx?: DbExecutor
+  tx?: DbExecutor,
+  expectedGeneration?: number
 ): Promise<void> {
   try {
     const now = new Date();
     const id = `outbox_${tag}`;
     const executor = tx ?? db;
 
-    const performRecord = () => {
+    const performRecord = async () => {
       if (success) {
-        return executor
-          .insert(cacheInvalidationOutbox)
-          .values({
-            id,
-            tag,
+        // Complete only if row matches expected generation, or is still in 'pending' status without lease
+        const updated = await executor
+          .update(cacheInvalidationOutbox)
+          .set({
             status: 'completed',
-            attempts: 1,
             lastError: null,
-            nextRetryAt: now,
             completedAt: now,
           })
-          .onConflictDoUpdate({
-            target: cacheInvalidationOutbox.tag,
-            set: {
+          .where(
+            and(
+              eq(cacheInvalidationOutbox.tag, tag),
+              expectedGeneration !== undefined
+                ? eq(cacheInvalidationOutbox.attempts, expectedGeneration)
+                : eq(cacheInvalidationOutbox.status, 'pending')
+            )
+          )
+          .returning({ id: cacheInvalidationOutbox.id });
+
+        // If row was not found (e.g. initial insert without prior enqueue), insert as completed
+        if (updated.length === 0 && expectedGeneration === undefined) {
+          await executor
+            .insert(cacheInvalidationOutbox)
+            .values({
+              id,
+              tag,
               status: 'completed',
+              attempts: 1,
               lastError: null,
+              nextRetryAt: now,
               completedAt: now,
-            },
-          });
+            })
+            .onConflictDoNothing();
+        }
       } else {
-        return executor
+        await executor
           .insert(cacheInvalidationOutbox)
           .values({
             id,
@@ -174,7 +196,8 @@ export async function recordDurableInvalidation(
 
 /**
  * Processes pending and stale-leased 'processing' cache invalidations in PostgreSQL outbox.
- * Safe against concurrent workers via atomic conditional claim with a bounded processing lease.
+ * Safe against concurrent workers via atomic conditional claim with unique lease token.
+ * A worker can only complete the claim if the row still has its exact lease token and generation.
  */
 export async function processPendingInvalidations(): Promise<void> {
   if (globalThis._outboxRetryWorkerRunning) return;
@@ -199,26 +222,26 @@ export async function processPendingInvalidations(): Promise<void> {
       const claimNow = new Date();
       const leaseUntil = new Date(claimNow.getTime() + PROCESSING_LEASE_MS);
       const wasStaleProcessing = entry.status === 'processing';
+      const claimToken = `lease_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-      // Atomic claim + lease assignment: ensures concurrent workers cannot claim the same entry
-      // and a crashed 'processing' worker's entry becomes reclaimable only after leaseUntil expires.
+      // Atomic claim + lease assignment: ensures concurrent workers cannot claim the same entry.
+      // Stores unique claimToken in lastError to guarantee that only this specific claim holder can complete it.
       const lockResult = await withDbRetry(() =>
         db
           .update(cacheInvalidationOutbox)
           .set({
             status: 'processing',
             nextRetryAt: leaseUntil,
+            lastError: claimToken,
             ...(wasStaleProcessing
-              ? {
-                  attempts: sql`${cacheInvalidationOutbox.attempts} + 1`,
-                  lastError: entry.lastError || 'Reclaimed stale processing outbox entry after lease expiry',
-                }
+              ? { attempts: sql`${cacheInvalidationOutbox.attempts} + 1` }
               : {}),
           })
           .where(
             and(
               eq(cacheInvalidationOutbox.id, entry.id),
               eq(cacheInvalidationOutbox.status, entry.status),
+              eq(cacheInvalidationOutbox.attempts, entry.attempts),
               lte(cacheInvalidationOutbox.nextRetryAt, claimNow)
             )
           )
@@ -228,12 +251,14 @@ export async function processPendingInvalidations(): Promise<void> {
           })
       );
 
-      if (lockResult.length === 0) continue; // Another worker claimed or updated it
+      if (lockResult.length === 0) continue; // Another worker claimed it or newer enqueue occurred
       const currentAttempts = lockResult[0].attempts;
 
       try {
         revalidateTag(entry.tag);
         failedInvalidationTags.delete(entry.tag);
+
+        // Complete ONLY if the database row still represents this exact worker's lease claimToken and generation
         await withDbRetry(() =>
           db
             .update(cacheInvalidationOutbox)
@@ -245,7 +270,9 @@ export async function processPendingInvalidations(): Promise<void> {
             .where(
               and(
                 eq(cacheInvalidationOutbox.id, entry.id),
-                eq(cacheInvalidationOutbox.status, 'processing')
+                eq(cacheInvalidationOutbox.status, 'processing'),
+                eq(cacheInvalidationOutbox.attempts, currentAttempts),
+                eq(cacheInvalidationOutbox.lastError, claimToken)
               )
             )
         );
@@ -253,6 +280,8 @@ export async function processPendingInvalidations(): Promise<void> {
         const nextAttempts = currentAttempts + 1;
         const backoffMs = Math.min(300000, Math.pow(2, Math.min(nextAttempts, 6)) * 5000);
         failedInvalidationTags.add(entry.tag);
+
+        // Reschedule ONLY if this worker still holds the claim
         await withDbRetry(() =>
           db
             .update(cacheInvalidationOutbox)
@@ -265,7 +294,8 @@ export async function processPendingInvalidations(): Promise<void> {
             .where(
               and(
                 eq(cacheInvalidationOutbox.id, entry.id),
-                eq(cacheInvalidationOutbox.status, 'processing')
+                eq(cacheInvalidationOutbox.status, 'processing'),
+                eq(cacheInvalidationOutbox.lastError, claimToken)
               )
             )
         );
@@ -387,30 +417,24 @@ export const getCachedLiveListingCounts = cache(async () => {
 
   let counts: { parentCountMap: Record<string, number>; subCountMap: Record<string, number> };
 
-  if (failedInvalidationTags.has(REFERENCE_CACHE_TAGS.LISTING_COUNTS)) {
-    tryHealInvalidationTag(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
-    counts = await categoryRepository.findLiveListingCounts();
-  } else {
-    counts = await fetchCachedLiveListingCountsInternal();
-    // Self-heal if Data Cache served a stale empty map from before seeding completed
-    if (
-      Object.keys(counts?.parentCountMap || {}).length === 0 &&
-      Object.keys(counts?.subCountMap || {}).length === 0
-    ) {
+  try {
+    if (failedInvalidationTags.has(REFERENCE_CACHE_TAGS.LISTING_COUNTS)) {
+      tryHealInvalidationTag(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
       counts = await categoryRepository.findLiveListingCounts();
+    } else {
+      counts = await fetchCachedLiveListingCountsInternal();
     }
-  }
 
-  if (
-    Object.keys(counts?.parentCountMap || {}).length > 0 ||
-    Object.keys(counts?.subCountMap || {}).length > 0
-  ) {
+    // A successful database response (even if 0 or empty maps) is valid current data!
     lastKnownGoodCounts = counts;
-  } else if (lastKnownGoodCounts) {
-    return lastKnownGoodCounts;
+    return counts;
+  } catch (error) {
+    console.error('[ReferenceCache] Failed to fetch live listing counts, using fallback:', error);
+    if (lastKnownGoodCounts) {
+      return lastKnownGoodCounts;
+    }
+    return { parentCountMap: {}, subCountMap: {} };
   }
-
-  return counts;
 });
 
 export const getCategoriesWithLiveCounts = cache(async (): Promise<Category[]> => {
@@ -450,12 +474,8 @@ export const getCategoriesWithLiveCounts = cache(async (): Promise<Category[]> =
       };
     });
 
-    if (merged.some((c) => (c.listingCount || 0) > 0)) {
-      lastKnownGoodCategoriesWithCounts = merged;
-    } else if (lastKnownGoodCategoriesWithCounts) {
-      return lastKnownGoodCategoriesWithCounts;
-    }
-
+    // Successfully computed live category counts: retain as latest valid state
+    lastKnownGoodCategoriesWithCounts = merged;
     return merged;
   } catch (error) {
     console.error('[ReferenceCache] getCategoriesWithLiveCounts error:', error);
@@ -497,8 +517,9 @@ export const getCachedSystemSettings = cache(async (): Promise<SystemSettings> =
 /**
  * Invalidates cached category, subcategory, and navigation reference data.
  * Must only be called AFTER the database create/update/delete operation has succeeded.
+ * Enqueues durable PostgreSQL outbox entries so restarts or crashes never lose invalidations.
  */
-export function invalidateCategoryReferenceCache(): void {
+export async function invalidateCategoryReferenceCache(tx?: DbExecutor): Promise<void> {
   const tagsToInvalidate = [
     REFERENCE_CACHE_TAGS.CATEGORIES,
     REFERENCE_CACHE_TAGS.SUBCATEGORIES,
@@ -506,12 +527,30 @@ export function invalidateCategoryReferenceCache(): void {
   ];
 
   for (const tag of tagsToInvalidate) {
+    let generation: number | undefined;
+    try {
+      const enqueueRes = await enqueueDurableInvalidation(tag, tx);
+      generation = enqueueRes.generation;
+    } catch (e) {
+      console.error(`[ReferenceCache] Failed to enqueue durable outbox for tag "${tag}":`, e);
+    }
+
+    let success = false;
+    let errStr: string | undefined;
     try {
       revalidateTag(tag);
       failedInvalidationTags.delete(tag);
-    } catch (error) {
+      success = true;
+    } catch (error: any) {
       console.error(`[ReferenceCache] Failed to revalidate tag "${tag}":`, error);
       failedInvalidationTags.add(tag);
+      errStr = String(error?.message || error);
+    }
+
+    try {
+      await recordDurableInvalidation(tag, success, errStr, tx, generation);
+    } catch (outboxErr) {
+      console.error(`[ReferenceCache] Error recording outbox completion for "${tag}":`, outboxErr);
     }
   }
 
@@ -525,20 +564,39 @@ export function invalidateCategoryReferenceCache(): void {
 /**
  * Invalidates cached location and navigation reference data.
  * Must only be called AFTER the database create/update/delete operation has succeeded.
+ * Enqueues durable PostgreSQL outbox entries so restarts or crashes never lose invalidations.
  */
-export function invalidateLocationReferenceCache(): void {
+export async function invalidateLocationReferenceCache(tx?: DbExecutor): Promise<void> {
   const tagsToInvalidate = [
     REFERENCE_CACHE_TAGS.LOCATIONS,
     REFERENCE_CACHE_TAGS.NAVIGATION,
   ];
 
   for (const tag of tagsToInvalidate) {
+    let generation: number | undefined;
+    try {
+      const enqueueRes = await enqueueDurableInvalidation(tag, tx);
+      generation = enqueueRes.generation;
+    } catch (e) {
+      console.error(`[ReferenceCache] Failed to enqueue durable outbox for tag "${tag}":`, e);
+    }
+
+    let success = false;
+    let errStr: string | undefined;
     try {
       revalidateTag(tag);
       failedInvalidationTags.delete(tag);
-    } catch (error) {
+      success = true;
+    } catch (error: any) {
       console.error(`[ReferenceCache] Failed to revalidate tag "${tag}":`, error);
       failedInvalidationTags.add(tag);
+      errStr = String(error?.message || error);
+    }
+
+    try {
+      await recordDurableInvalidation(tag, success, errStr, tx, generation);
+    } catch (outboxErr) {
+      console.error(`[ReferenceCache] Error recording outbox completion for "${tag}":`, outboxErr);
     }
   }
 
@@ -552,14 +610,33 @@ export function invalidateLocationReferenceCache(): void {
 /**
  * Invalidates cached system settings reference data.
  * Must only be called AFTER the database update operation has succeeded.
+ * Enqueues durable PostgreSQL outbox entry so restarts or crashes never lose invalidations.
  */
-export function invalidateSettingsReferenceCache(): void {
+export async function invalidateSettingsReferenceCache(tx?: DbExecutor): Promise<void> {
+  let generation: number | undefined;
+  try {
+    const enqueueRes = await enqueueDurableInvalidation(REFERENCE_CACHE_TAGS.SETTINGS, tx);
+    generation = enqueueRes.generation;
+  } catch (e) {
+    console.error(`[ReferenceCache] Failed to enqueue durable outbox for settings:`, e);
+  }
+
+  let success = false;
+  let errStr: string | undefined;
   try {
     revalidateTag(REFERENCE_CACHE_TAGS.SETTINGS);
     failedInvalidationTags.delete(REFERENCE_CACHE_TAGS.SETTINGS);
-  } catch (error) {
+    success = true;
+  } catch (error: any) {
     console.error(`[ReferenceCache] Failed to revalidate tag "${REFERENCE_CACHE_TAGS.SETTINGS}":`, error);
     failedInvalidationTags.add(REFERENCE_CACHE_TAGS.SETTINGS);
+    errStr = String(error?.message || error);
+  }
+
+  try {
+    await recordDurableInvalidation(REFERENCE_CACHE_TAGS.SETTINGS, success, errStr, tx, generation);
+  } catch (outboxErr) {
+    console.error('[ReferenceCache] Error recording outbox for settings:', outboxErr);
   }
 
   try {

@@ -36,7 +36,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
-    invalidateCategoryReferenceCache();
+    await invalidateCategoryReferenceCache();
 
     return NextResponse.json(updated);
   } catch (error: any) {
@@ -64,7 +64,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
-    invalidateCategoryReferenceCache();
+    await invalidateCategoryReferenceCache();
 
     return NextResponse.json({ success: true, message: 'Category deleted' });
   } catch (error: any) {

@@ -48,6 +48,7 @@ export function toPublicListingCard(listing: Listing): Listing {
 export function toPublicListingDetail(listing: Listing): Listing {
   return {
     ...listing,
+    sellerPhone: '',
     rejectionReason: undefined,
     boostPaymentId: undefined,
     spamScore: 0,

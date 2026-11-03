@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       orderIndex: body.orderIndex || 0,
     });
 
-    invalidateLocationReferenceCache();
+    await invalidateLocationReferenceCache();
 
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {

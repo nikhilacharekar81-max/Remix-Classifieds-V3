@@ -19,6 +19,8 @@ export interface ListingOfferAndSellerCardProps {
   listing: Listing;
   isOwner: boolean;
   showPhone: boolean;
+  revealedPhone?: string | null;
+  isRevealingPhone?: boolean;
   onRevealPhone: () => void;
   onOpenBoostModal: () => void;
 }
@@ -27,6 +29,8 @@ export const ListingOfferAndSellerCard: React.FC<ListingOfferAndSellerCardProps>
   listing,
   isOwner,
   showPhone,
+  revealedPhone,
+  isRevealingPhone,
   onRevealPhone,
   onOpenBoostModal,
 }) => {
@@ -139,11 +143,11 @@ export const ListingOfferAndSellerCard: React.FC<ListingOfferAndSellerCardProps>
 
           {/* Call & Reveal Phone Button */}
           <div className="pt-1">
-            {showPhone ? (
+            {showPhone && (revealedPhone || listing.sellerPhone) ? (
               <div className="p-3 bg-[#e6f4ea] border border-[#ceead6] rounded-lg flex items-center justify-between text-[#137333] font-bold text-sm font-mono tabular-nums">
                 <div className="flex items-center gap-2">
                   <Phone className="w-4 h-4 text-[#137333]" />
-                  <span>{listing.sellerPhone}</span>
+                  <span>{revealedPhone || listing.sellerPhone}</span>
                 </div>
                 <span className="text-[11px] font-sans font-semibold text-[#137333]">
                   Verified Seller
@@ -153,10 +157,11 @@ export const ListingOfferAndSellerCard: React.FC<ListingOfferAndSellerCardProps>
               <button
                 type="button"
                 onClick={onRevealPhone}
-                className="w-full py-3 px-4 bg-[#1dbf73] hover:bg-[#19a463] text-white font-bold rounded-md flex items-center justify-center gap-2 text-sm transition-colors cursor-pointer"
+                disabled={isRevealingPhone}
+                className="w-full py-3 px-4 bg-[#1dbf73] hover:bg-[#19a463] text-white font-bold rounded-md flex items-center justify-center gap-2 text-sm transition-colors cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
               >
                 <Phone className="w-4 h-4" />
-                <span>Continue &amp; Reveal Phone</span>
+                <span>{isRevealingPhone ? 'Revealing Phone...' : 'Continue & Reveal Phone'}</span>
               </button>
             )}
           </div>

@@ -1,5 +1,9 @@
 import type { Metadata } from 'next';
-import { listingService, getCachedPublicListingById } from '@/server/services/listing.service';
+import {
+  listingService,
+  getCachedPublicListingById,
+  isListingPubliclyAccessible,
+} from '@/server/services/listing.service';
 import {
   getCategoriesWithLiveCounts,
   getCachedLocations,
@@ -25,7 +29,7 @@ export async function generateMetadata({ params }: FourSegmentListingPageProps):
   const { itemId } = stripChillySuffixes(itemSlug);
 
   const listing = itemId ? await getCachedPublicListingById(itemId) : null;
-  if (!listing || listing.status !== 'approved') {
+  if (!isListingPubliclyAccessible(listing)) {
     return {
       title: 'Listing Not Found | Classifieds V2',
       description: 'The requested classified ad could not be found or has expired.',
@@ -81,7 +85,7 @@ export default async function FourSegmentListingPage({ params }: FourSegmentList
     getCachedSystemSettings(),
   ]);
 
-  if (!listing || listing.status !== 'approved') {
+  if (!isListingPubliclyAccessible(listing)) {
     notFound();
   }
 

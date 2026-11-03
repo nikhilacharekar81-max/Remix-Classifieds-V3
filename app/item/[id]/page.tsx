@@ -1,6 +1,10 @@
 import { cache } from 'react';
 import { PublicListingDetailPage } from '@/components/marketplace/PublicListingDetailPage';
-import { listingService, getCachedPublicListingById } from '@/server/services/listing.service';
+import {
+  listingService,
+  getCachedPublicListingById,
+  isListingPubliclyAccessible,
+} from '@/server/services/listing.service';
 import {
   getCategoriesWithLiveCounts,
   getCachedLocations,
@@ -25,7 +29,7 @@ export async function generateMetadata({
     getCategoriesWithLiveCounts(),
   ]);
 
-  if (!listing || listing.status !== 'approved') {
+  if (!isListingPubliclyAccessible(listing)) {
     return {
       title: 'Classified Ad Not Found | Classifieds V2',
       description: 'The requested listing may have expired or been sold.',
@@ -68,7 +72,7 @@ export default async function ItemDetailPage({
     getCachedSystemSettings(),
   ]);
 
-  if (!listing || listing.status !== 'approved') {
+  if (!isListingPubliclyAccessible(listing)) {
     notFound();
   }
 

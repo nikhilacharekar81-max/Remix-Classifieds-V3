@@ -544,6 +544,17 @@ export class ListingService {
     await listingRepository.incrementViews(id);
   }
 
+  public async getSellerPhoneForListing(id: string): Promise<string | null> {
+    if (!id) return null;
+    const cleanId = id.trim();
+    const listing = await listingRepository.findById(cleanId);
+    if (!listing) return null;
+    if (!isListingPubliclyAccessible(listing)) {
+      return null;
+    }
+    return listing.sellerPhone || null;
+  }
+
   public async getSimilarListings(listingId: string, limit: number = 4): Promise<Listing[]> {
     const current = await listingRepository.findById(listingId);
     if (!current) return [];
@@ -552,6 +563,7 @@ export class ListingService {
       category: current.categoryId,
       city: current.location.city,
       limit: limit + 1,
+      skipCount: true,
     });
 
     return res.items.filter((l) => l.id !== current.id).slice(0, limit);
@@ -559,6 +571,21 @@ export class ListingService {
 }
 
 export const listingService = new ListingService();
+
+/**
+ * Validates that a listing is approved and unexpired for public visibility.
+ */
+export function isListingPubliclyAccessible(listing: Listing | null | undefined): listing is Listing {
+  if (!listing) return false;
+  if (listing.status !== 'approved') return false;
+  if (listing.expiresAt) {
+    const expTime = new Date(listing.expiresAt).getTime();
+    if (!isNaN(expTime) && expTime <= Date.now()) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Per-request React.cache() deduplicated + cross-request unstable_cache listing lookup

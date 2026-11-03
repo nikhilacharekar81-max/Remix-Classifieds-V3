@@ -58,7 +58,7 @@ export class AdminService {
       freeListingsQuota: catData.freeListingsQuota || 3,
     });
 
-    invalidateCategoryReferenceCache();
+    await invalidateCategoryReferenceCache();
     await this.recordAudit('CATEGORY_CREATED', 'Categories', id, category.name, `Created category "${category.name}"`);
     return category;
   }
@@ -79,7 +79,7 @@ export class AdminService {
 
     const updated = await categoryRepository.update(id, fields);
     if (updated) {
-      invalidateCategoryReferenceCache();
+      await invalidateCategoryReferenceCache();
       await this.recordAudit('CATEGORY_UPDATED', 'Categories', id, updated.name, `Updated category "${updated.name}"`);
     }
     return updated;
@@ -89,7 +89,7 @@ export class AdminService {
     const cat = await categoryRepository.findById(id);
     const success = await categoryRepository.delete(id);
     if (success) {
-      invalidateCategoryReferenceCache();
+      await invalidateCategoryReferenceCache();
       if (cat) {
         await this.recordAudit('CATEGORY_DELETED', 'Categories', id, cat.name, `Deleted category "${cat.name}"`);
       }
@@ -135,7 +135,7 @@ export class AdminService {
       popular: locData.popular ?? false,
       orderIndex: locData.orderIndex || 0,
     });
-    invalidateLocationReferenceCache();
+    await invalidateLocationReferenceCache();
     return created;
   }
 
@@ -153,7 +153,7 @@ export class AdminService {
 
     const updated = await locationRepository.update(id, fields);
     if (updated) {
-      invalidateLocationReferenceCache();
+      await invalidateLocationReferenceCache();
     }
     return updated;
   }
@@ -161,7 +161,7 @@ export class AdminService {
   public async deleteLocation(id: string): Promise<boolean> {
     const success = await locationRepository.delete(id);
     if (success) {
-      invalidateLocationReferenceCache();
+      await invalidateLocationReferenceCache();
     }
     return success;
   }
@@ -176,7 +176,7 @@ export class AdminService {
     actor?: { id?: string; name?: string; ipAddress?: string }
   ): Promise<SystemSettings> {
     const updated = await adminRepository.updateSystemSettings(newSettings);
-    invalidateSettingsReferenceCache();
+    await invalidateSettingsReferenceCache();
     await this.recordAudit(
       'SETTINGS_UPDATED',
       'Settings',
