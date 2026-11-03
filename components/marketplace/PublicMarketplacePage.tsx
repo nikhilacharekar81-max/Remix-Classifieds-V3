@@ -37,13 +37,24 @@ export const PublicMarketplacePage: React.FC<PublicMarketplacePageProps> = ({
   effectiveSearch = '',
   isSearchRoute = false,
   query = {},
-  categories,
+  categories: rawCategories,
   locations,
   listings,
   totalListings,
   currentPage = 1,
   enablePrivacyChoices = false,
 }) => {
+  const categories: Category[] = rawCategories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    icon: c.icon,
+    parentId: c.parentId,
+    order: c.order,
+    isActive: c.isActive,
+    listingCount: c.listingCount,
+  }));
+
   const rootCategories = categories.filter((c) => !c.parentId && c.isActive);
 
   const totalDirectoryListings =
@@ -66,6 +77,25 @@ export const PublicMarketplacePage: React.FC<PublicMarketplacePageProps> = ({
       : 'home';
 
   const seoData = getSeoContent(effectiveCity || 'All India', seoCategoryName, seoCategoryId);
+
+  // For catalog pages, pass only the categories referenced by the active route and listings
+  // (plus their parent categories) so the client catalog island RSC payload stays lean.
+  const catalogCategories: Category[] = (() => {
+    if (mode !== 'listings') return [];
+    const neededIds = new Set<string>();
+    if (effectiveCategory && effectiveCategory !== 'all') neededIds.add(effectiveCategory);
+    if (effectiveSubcategory && effectiveSubcategory !== 'all') neededIds.add(effectiveSubcategory);
+    for (const l of listings) {
+      if (l.categoryId) neededIds.add(l.categoryId);
+      if (l.subcategoryId) neededIds.add(l.subcategoryId);
+    }
+    for (const c of categories) {
+      if (neededIds.has(c.id) && c.parentId) {
+        neededIds.add(c.parentId);
+      }
+    }
+    return categories.filter((c) => neededIds.has(c.id));
+  })();
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] text-[#202124] flex flex-col font-sans overflow-x-hidden">
@@ -116,7 +146,7 @@ export const PublicMarketplacePage: React.FC<PublicMarketplacePageProps> = ({
             effectiveSubcategory={effectiveSubcategory}
             effectiveSearch={effectiveSearch}
             isSearchRoute={isSearchRoute}
-            categories={categories}
+            categories={catalogCategories}
             listings={listings}
             totalMatchingListings={totalListings}
             currentPage={currentPage}

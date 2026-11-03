@@ -72,7 +72,9 @@ export const LatestAdsSection: React.FC<LatestAdsSectionProps> = ({
     if (listing.categoryId) referencedIds.add(listing.categoryId);
     if (listing.subcategoryId) referencedIds.add(listing.subcategoryId);
   }
-  const referencedCategories = categories.filter((c) => referencedIds.has(c.id));
+  const referencedCategories = categories
+    .filter((c) => referencedIds.has(c.id))
+    .map(({ seoTitle: _st, seoDescription: _sd, ...rest }) => rest);
 
   return (
     <LatestAdsToggleWrapper

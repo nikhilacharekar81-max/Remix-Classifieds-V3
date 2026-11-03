@@ -46,6 +46,8 @@ const POPULAR_CITIES = [
   'Ahmedabad',
 ];
 
+let sharedClientCityOptions: CompactCityOption[] = [];
+
 export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
   className = '',
   currentCity,
@@ -58,6 +60,12 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
   locations: propLocations,
 }) => {
   const app = useAppOptional();
+
+  useEffect(() => {
+    if (propCityOptions && propCityOptions.length > 0) {
+      sharedClientCityOptions = propCityOptions;
+    }
+  }, [propCityOptions]);
 
   const categories = useMemo(
     () => propCategories ?? app?.categories ?? [],
@@ -118,6 +126,9 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
     if (propCityOptions && propCityOptions.length > 0) {
       return propCityOptions;
     }
+    if (sharedClientCityOptions.length > 0) {
+      return sharedClientCityOptions;
+    }
     const states = locations.filter((loc) => loc.type === 'state');
     const stateMap = new Map(states.map((s) => [s.id, s.name]));
     return locations
@@ -127,7 +138,8 @@ export const LocationSelectorInput: React.FC<LocationSelectorInputProps> = ({
         name: c.name,
         stateName: c.parentId ? stateMap.get(c.parentId) : undefined,
       }));
-  }, [propCityOptions, locations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propCityOptions, locations, isOpen]);
 
   // Filtered cities list
   const filteredCities = useMemo(() => {

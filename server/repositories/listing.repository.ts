@@ -33,14 +33,41 @@ export function doesListingUpdateAffectCounts(
   );
 }
 
+const CARD_ATTRIBUTE_KEYS = [
+  'year',
+  'km_driven',
+  'fuel',
+  'storage',
+  'bhk',
+  'configuration',
+  'property_type',
+  'furnishing',
+] as const;
+
 export function toPublicListingCard(listing: Listing): Listing {
+  const slimAttributes: Record<string, any> = {};
+  if (listing.customAttributes) {
+    for (const key of CARD_ATTRIBUTE_KEYS) {
+      if (listing.customAttributes[key] !== undefined && listing.customAttributes[key] !== '') {
+        slimAttributes[key] = listing.customAttributes[key];
+      }
+    }
+  }
+
   return {
     ...listing,
     sellerPhone: '',
-    description: listing.description ? listing.description.slice(0, 220) : '',
+    description: listing.description ? listing.description.slice(0, 160) : '',
     images: listing.images && listing.images.length > 0 ? [listing.images[0]] : [],
+    customAttributes: slimAttributes,
     rejectionReason: undefined,
     boostPaymentId: undefined,
+    boostPackageId: undefined,
+    boostPackageName: undefined,
+    boostStartedAt: undefined,
+    boostPrice: undefined,
+    boostDurationHours: undefined,
+    featuredUntil: undefined,
     spamScore: 0,
   };
 }

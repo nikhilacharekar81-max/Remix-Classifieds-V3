@@ -7,9 +7,13 @@ import {
   getCachedSystemSettings,
 } from '@/server/cache/reference-data.cache';
 import { listingService } from '@/server/services/listing.service';
+import nextDynamic from 'next/dynamic';
 import { getInitialServerDataForAppRouter } from '@/server/services/initialServerData';
-import { AppClientRouter } from '@/components/AppClientRouter';
 import { PublicMarketplacePage } from '@/components/marketplace/PublicMarketplacePage';
+
+const AppClientRouter = nextDynamic(() =>
+  import('@/components/AppClientRouter').then((m) => m.AppClientRouter)
+);
 import {
   stripChillySuffixes,
   unslugifyCity,

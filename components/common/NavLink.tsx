@@ -1,9 +1,14 @@
 'use client';
 
-import React, { useId } from 'react';
+import React, { useId, useState, useEffect } from 'react';
 import Link, { LinkProps } from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import { useNavigationFeedback } from '@/lib/router/useRouter';
+import {
+  getPendingNavigationUrl,
+  normalizeInternalUrl,
+  startNavigationFeedback,
+} from '@/lib/router/useRouter';
 
 export interface NavLinkProps
   extends Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, keyof LinkProps>,
@@ -23,11 +28,18 @@ export const NavLink: React.FC<NavLinkProps> = ({
   ...rest
 }) => {
   const linkId = useId();
-  const { isUrlPending, isSameUrlInProgress, startNavigationFeedback } = useNavigationFeedback();
+  const pathname = usePathname();
+  const [pendingForPath, setPendingForPath] = useState<string | null>(null);
   const hrefString = typeof href === 'string' ? href : href.pathname || '/';
+  const isThisLinkPending = pendingForPath !== null && pendingForPath === pathname;
 
-  const isThisLinkPending = isUrlPending(hrefString, linkId);
-  const isDuplicateTargetInProgress = isSameUrlInProgress(hrefString);
+  useEffect(() => {
+    if (!isThisLinkPending) return;
+    const timer = setTimeout(() => {
+      setPendingForPath(null);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [isThisLinkPending]);
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     // Preserve standard browser behavior for new-tab / modifier clicks
@@ -43,8 +55,11 @@ export const NavLink: React.FC<NavLinkProps> = ({
       return;
     }
 
+    const normalizedTarget = normalizeInternalUrl(hrefString);
+    const currentPending = getPendingNavigationUrl();
+
     // Prevent duplicate clicks while the same navigation is already in progress
-    if (isDuplicateTargetInProgress) {
+    if (currentPending && currentPending === normalizedTarget) {
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -57,6 +72,8 @@ export const NavLink: React.FC<NavLinkProps> = ({
       if (!started) {
         // Already at this exact URL with no pending navigation
         e.preventDefault();
+      } else if (showSpinner) {
+        setPendingForPath(pathname);
       }
     }
   };
@@ -66,7 +83,7 @@ export const NavLink: React.FC<NavLinkProps> = ({
       href={href}
       onClick={handleClick}
       aria-busy={isThisLinkPending || undefined}
-      className={`${className} ${isDuplicateTargetInProgress ? 'pointer-events-none' : ''}`}
+      className={`${className} ${isThisLinkPending ? 'pointer-events-none' : ''}`}
       {...rest}
     >
       {children}
@@ -76,3 +93,4 @@ export const NavLink: React.FC<NavLinkProps> = ({
     </Link>
   );
 };
+

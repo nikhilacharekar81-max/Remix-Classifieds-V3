@@ -26,10 +26,21 @@ export interface PublicListingDetailPageProps {
 export const PublicListingDetailPage: React.FC<PublicListingDetailPageProps> = ({
   listing,
   relatedListings,
-  categories,
+  categories: rawCategories,
   locations,
   enablePrivacyChoices = false,
 }) => {
+  const categories: Category[] = rawCategories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    icon: c.icon,
+    parentId: c.parentId,
+    order: c.order,
+    isActive: c.isActive,
+    listingCount: c.listingCount,
+  }));
+
   const category = categories.find((c) => c.id === listing.categoryId);
   const subcategory = listing.subcategoryId
     ? categories.find((c) => c.id === listing.subcategoryId)

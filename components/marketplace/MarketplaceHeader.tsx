@@ -150,7 +150,6 @@ export const MarketplaceHeader: React.FC<MarketplaceHeaderProps> = ({
           <LocationSelectorInput
             className="w-full"
             currentCity={effectiveCity}
-            cityOptions={cityOptionsProp}
             currentCategoryId={activeCategoryId}
             currentSubcategoryId={activeSubcategoryId}
             activeCategorySlug={activeCatObj?.slug}
