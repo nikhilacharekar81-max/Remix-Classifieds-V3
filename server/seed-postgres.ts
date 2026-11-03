@@ -1,6 +1,6 @@
 import { db } from '@/src/db/index';
 import * as schema from '@/src/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { hashPassword } from '@/lib/auth/password';
 import {
   INITIAL_CATEGORIES,
@@ -56,42 +56,86 @@ function resolveCategoryId(rawId: string): string {
   return id;
 }
 
+const REQUIRED_SETTING_IDS = ['primary', INITIALIZATION_MARKER_ID];
+const REQUIRED_CATEGORY_IDS = Array.from(new Set(INITIAL_CATEGORIES.map((c) => c.id)));
+const REQUIRED_CUSTOM_FIELD_IDS = Array.from(new Set(INITIAL_CUSTOM_FIELDS.map((f) => f.id)));
+const REQUIRED_LOCATION_IDS = Array.from(new Set(INITIAL_LOCATIONS.map((l) => l.id)));
+const REQUIRED_PACKAGE_IDS = Array.from(new Set(INITIAL_PACKAGES.map((p) => p.id)));
+const REQUIRED_MODERATION_RULE_IDS = Array.from(new Set(INITIAL_MODERATION_RULES.map((r) => r.id)));
+const REQUIRED_EMAIL_TEMPLATE_IDS = Array.from(new Set(INITIAL_EMAIL_TEMPLATES.map((t) => t.id)));
+const REQUIRED_CMS_PAGE_SLUGS = Array.from(new Set(INITIAL_CMS_PAGES.map((p) => p.slug)));
+
 /**
  * Checks whether the database has completed all essential production initialization steps.
- * Requires both the explicit completion marker ('init_complete_v3') and non-empty core reference tables
- * so a partially populated database is never mistaken for a fully initialized database.
+ * Verifies the actual required essential records (by primary/unique key) across all reference tables
+ * populated by `seedEssentialProductionData()`, rather than relying on approximate row counts.
  */
 export async function checkIsFullyInitialized(executor: SeedDbExecutor = db): Promise<boolean> {
-  const [markerRows, primarySettingsRows, categoryCountRes, locationCountRes] = await Promise.all([
-    executor
-      .select({ id: schema.systemSettings.id })
-      .from(schema.systemSettings)
-      .where(eq(schema.systemSettings.id, INITIALIZATION_MARKER_ID))
-      .limit(1),
-    executor
-      .select({ id: schema.systemSettings.id })
-      .from(schema.systemSettings)
-      .where(eq(schema.systemSettings.id, 'primary'))
-      .limit(1),
-    executor
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.categories),
-    executor
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.locations),
-  ]);
+  const settingsCountRes = await executor
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.systemSettings)
+    .where(inArray(schema.systemSettings.id, REQUIRED_SETTING_IDS));
+  if (Number(settingsCountRes[0]?.count || 0) !== REQUIRED_SETTING_IDS.length) {
+    return false;
+  }
 
-  const hasMarker = markerRows.length > 0;
-  const hasPrimarySettings = primarySettingsRows.length > 0;
-  const categoryCount = Number(categoryCountRes[0]?.count || 0);
-  const locationCount = Number(locationCountRes[0]?.count || 0);
+  const categoryCountRes = await executor
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.categories)
+    .where(inArray(schema.categories.id, REQUIRED_CATEGORY_IDS));
+  if (Number(categoryCountRes[0]?.count || 0) !== REQUIRED_CATEGORY_IDS.length) {
+    return false;
+  }
 
-  return (
-    hasMarker &&
-    hasPrimarySettings &&
-    categoryCount >= INITIAL_CATEGORIES.length &&
-    locationCount >= INITIAL_LOCATIONS.length
-  );
+  const customFieldCountRes = await executor
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.categoryCustomFields)
+    .where(inArray(schema.categoryCustomFields.id, REQUIRED_CUSTOM_FIELD_IDS));
+  if (Number(customFieldCountRes[0]?.count || 0) !== REQUIRED_CUSTOM_FIELD_IDS.length) {
+    return false;
+  }
+
+  const locationCountRes = await executor
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.locations)
+    .where(inArray(schema.locations.id, REQUIRED_LOCATION_IDS));
+  if (Number(locationCountRes[0]?.count || 0) !== REQUIRED_LOCATION_IDS.length) {
+    return false;
+  }
+
+  const packageCountRes = await executor
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.boostPackages)
+    .where(inArray(schema.boostPackages.id, REQUIRED_PACKAGE_IDS));
+  if (Number(packageCountRes[0]?.count || 0) !== REQUIRED_PACKAGE_IDS.length) {
+    return false;
+  }
+
+  const moderationRuleCountRes = await executor
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.moderationRules)
+    .where(inArray(schema.moderationRules.id, REQUIRED_MODERATION_RULE_IDS));
+  if (Number(moderationRuleCountRes[0]?.count || 0) !== REQUIRED_MODERATION_RULE_IDS.length) {
+    return false;
+  }
+
+  const emailTemplateCountRes = await executor
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.emailTemplates)
+    .where(inArray(schema.emailTemplates.id, REQUIRED_EMAIL_TEMPLATE_IDS));
+  if (Number(emailTemplateCountRes[0]?.count || 0) !== REQUIRED_EMAIL_TEMPLATE_IDS.length) {
+    return false;
+  }
+
+  const cmsPageCountRes = await executor
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.cmsPages)
+    .where(inArray(schema.cmsPages.slug, REQUIRED_CMS_PAGE_SLUGS));
+  if (Number(cmsPageCountRes[0]?.count || 0) !== REQUIRED_CMS_PAGE_SLUGS.length) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -455,6 +499,12 @@ export async function ensureDatabaseSeeded(options?: {
 
         if (!alreadyInitialized) {
           await seedEssentialProductionData(tx);
+          const verifiedAfterSeed = await checkIsFullyInitialized(tx);
+          if (!verifiedAfterSeed) {
+            throw new Error(
+              'Essential production database initialization failed completeness verification after seeding.'
+            );
+          }
         }
 
         if (shouldSeedDemo) {

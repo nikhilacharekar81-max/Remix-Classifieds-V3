@@ -3,6 +3,8 @@ import { listingService } from '@/server/services/listing.service';
 import { adminService } from '@/server/services/admin.service';
 import { slugify, buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
 
+export const dynamic = 'force-dynamic';
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.chillyads.in';
   const now = new Date();

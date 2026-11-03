@@ -47,12 +47,12 @@ export const MarketplaceHeader: React.FC<MarketplaceHeaderProps> = ({
   const compactCityOptions: CompactCityOption[] = [];
   if (locations && locations.length > 0) {
     for (const loc of locations) {
-      if (loc.type === 'state' && loc.isActive) {
+      if (loc.type === 'state') {
         statesMap.set(loc.id, loc.name);
       }
     }
     for (const loc of locations) {
-      if (loc.type === 'city' && loc.isActive) {
+      if (loc.type === 'city') {
         compactCityOptions.push({
           id: loc.id,
           name: loc.name,

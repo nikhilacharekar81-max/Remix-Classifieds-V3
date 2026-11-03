@@ -1,7 +1,8 @@
-import { db } from '@/src/db/index';
+import { db, withDbRetry } from '@/src/db/index';
 import * as schema from '@/src/db/schema';
 import { eq, asc } from 'drizzle-orm';
 import { LocationItem } from '@/lib/types';
+import { ensureDatabaseSeeded, isDatabaseInitialized } from '@/server/seed-postgres';
 import { getCachedLocations } from '@/server/cache/reference-data.cache';
 
 export class LocationRepository {
@@ -23,7 +24,25 @@ export class LocationRepository {
 
   public async findAllDirect(): Promise<LocationItem[]> {
     try {
-      const rows = await db.select().from(schema.locations).orderBy(asc(schema.locations.orderIndex));
+      if (!isDatabaseInitialized()) {
+        await ensureDatabaseSeeded();
+      }
+
+      let rows = await withDbRetry(() =>
+        db.select().from(schema.locations).orderBy(asc(schema.locations.orderIndex))
+      );
+
+      if (rows.length === 0) {
+        await ensureDatabaseSeeded();
+        rows = await withDbRetry(() =>
+          db.select().from(schema.locations).orderBy(asc(schema.locations.orderIndex))
+        );
+      }
+
+      if (rows.length === 0) {
+        throw new Error('Locations table is empty after database initialization');
+      }
+
       return rows.map((r) => this.mapRowToLocation(r));
     } catch (error) {
       console.error('LocationRepository.findAllDirect error:', error);

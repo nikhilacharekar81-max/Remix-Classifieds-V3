@@ -520,6 +520,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
         currentCity={effectiveCity}
         activeCategoryId={effectiveCategory}
         activeSubcategoryId={effectiveSubcategory}
+        categories={categories}
       />
 
       <MarketplaceMobileDrawer

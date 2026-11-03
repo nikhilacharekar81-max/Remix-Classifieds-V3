@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Loader2 } from 'lucide-react';
 import { navigateTo, useNavigationFeedback } from '@/lib/router/useRouter';
+
+const HEADER_SEARCH_SYNC_EVENT = 'chilly_header_search_sync';
 
 export interface HeaderSearchInputProps {
   effectiveSearch?: string;
@@ -16,6 +18,24 @@ export const HeaderSearchInput: React.FC<HeaderSearchInputProps> = ({
   variant,
 }) => {
   const [localSearch, setLocalSearch] = useState(effectiveSearch);
+  const [prevEffectiveSearch, setPrevEffectiveSearch] = useState(effectiveSearch);
+
+  if (effectiveSearch !== prevEffectiveSearch) {
+    setPrevEffectiveSearch(effectiveSearch);
+    setLocalSearch(effectiveSearch);
+  }
+
+  useEffect(() => {
+    if (onSearchChange) return;
+    const handleSync = (event: Event) => {
+      const customEvent = event as CustomEvent<string>;
+      if (typeof customEvent.detail === 'string') {
+        setLocalSearch(customEvent.detail);
+      }
+    };
+    window.addEventListener(HEADER_SEARCH_SYNC_EVENT, handleSync);
+    return () => window.removeEventListener(HEADER_SEARCH_SYNC_EVENT, handleSync);
+  }, [onSearchChange]);
 
   const currentSearch = onSearchChange ? effectiveSearch : localSearch;
   const handleSearchChange = (q: string) => {
@@ -23,6 +43,9 @@ export const HeaderSearchInput: React.FC<HeaderSearchInputProps> = ({
       onSearchChange(q);
     } else {
       setLocalSearch(q);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent<string>(HEADER_SEARCH_SYNC_EVENT, { detail: q }));
+      }
     }
   };
 

@@ -1,8 +1,6 @@
 import React from 'react';
 import { Listing, Category } from '@/lib/types';
-import { ListingGridCard } from './ListingGridCard';
-import { ListingListicleCard } from './ListingListicleCard';
-import { LatestAdsToggleWrapper } from './LatestAdsToggleWrapper';
+import { LatestAdsToggleWrapper, LatestAdItemWithSubName } from './LatestAdsToggleWrapper';
 
 export interface LatestAdsSectionProps {
   latestAds: Listing[];
@@ -64,42 +62,25 @@ export const LatestAdsSection: React.FC<LatestAdsSectionProps> = ({
     );
   }
 
-  const gridContent = (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-      {latestAds.map((listing, idx) => (
-        <ListingGridCard
-          key={listing.id}
-          listing={listing}
-          categories={categories}
-          subName={resolveSubName(listing.categoryId, listing.subcategoryId)}
-          variant="latest"
-          priority={idx === 0}
-        />
-      ))}
-    </div>
-  );
+  const items: LatestAdItemWithSubName[] = latestAds.map((listing) => ({
+    listing,
+    subName: resolveSubName(listing.categoryId, listing.subcategoryId),
+  }));
 
-  const listicleContent = (
-    <div className="space-y-3">
-      {latestAds.map((listing, idx) => (
-        <ListingListicleCard
-          key={listing.id}
-          listing={listing}
-          rankNumber={idx + 1}
-          categories={categories}
-          subName={resolveSubName(listing.categoryId, listing.subcategoryId)}
-          variant="latest"
-          priority={idx === 0}
-        />
-      ))}
-    </div>
-  );
+  const referencedIds = new Set<string>();
+  for (const listing of latestAds) {
+    if (listing.categoryId) referencedIds.add(listing.categoryId);
+    if (listing.subcategoryId) referencedIds.add(listing.subcategoryId);
+  }
+  const referencedCategories = categories.filter((c) => referencedIds.has(c.id));
 
   return (
     <LatestAdsToggleWrapper
       title={titleNode}
-      gridContent={gridContent}
-      listicleContent={listicleContent}
+      items={items}
+      categories={referencedCategories}
+      latestAdsLayout={latestAdsLayout}
+      onChangeLayout={onChangeLayout}
     />
   );
 };

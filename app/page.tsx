@@ -5,7 +5,7 @@ import {
   getCachedLocations,
   getCachedSystemSettings,
 } from '@/server/cache/reference-data.cache';
-import { INITIAL_CATEGORIES, INITIAL_LOCATIONS } from '@/lib/data/initialData';
+import { ensureDatabaseSeeded, isDatabaseInitialized } from '@/server/seed-postgres';
 import { serializeJsonLd } from '@/lib/utils/seoAndUrlHelper';
 import type { Metadata } from 'next';
 
@@ -28,26 +28,34 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
-  let latestItems: any[] = [];
-  let categories = INITIAL_CATEGORIES;
-  let locations = INITIAL_LOCATIONS;
-  let enablePrivacyChoices = false;
-
-  try {
-    const [fetchedLatest, fetchedCategories, fetchedLocations, fetchedSettings] =
-      await Promise.all([
-        listingService.getCachedLatestListings('All India', 10),
-        getCategoriesWithLiveCounts(),
-        getCachedLocations(),
-        getCachedSystemSettings(),
-      ]);
-    latestItems = fetchedLatest;
-    if (fetchedCategories.length > 0) categories = fetchedCategories;
-    if (fetchedLocations.length > 0) locations = fetchedLocations;
-    enablePrivacyChoices = Boolean(fetchedSettings?.enablePrivacyChoices);
-  } catch (err) {
-    console.error('HomePage initial listing fetch error:', err);
+  if (!isDatabaseInitialized()) {
+    await ensureDatabaseSeeded();
   }
+
+  // Essential reference data must come from initialized PostgreSQL and must not fall back to
+  // static in-memory constants that would disguise an uninitialized or broken database.
+  const [categories, locations] = await Promise.all([
+    getCategoriesWithLiveCounts(),
+    getCachedLocations(),
+  ]);
+
+  if (categories.length === 0 || locations.length === 0) {
+    throw new Error('Essential marketplace categories or locations are missing after initialization.');
+  }
+
+  // Non-essential/dynamic homepage data preserves graceful fallback only after essential initialization succeeded.
+  const [latestItems, fetchedSettings] = await Promise.all([
+    listingService.getCachedLatestListings('All India', 10).catch((err) => {
+      console.error('HomePage latest listings fetch error:', err);
+      return [];
+    }),
+    getCachedSystemSettings().catch((err) => {
+      console.error('HomePage system settings fetch error:', err);
+      return null;
+    }),
+  ]);
+
+  const enablePrivacyChoices = Boolean(fetchedSettings?.enablePrivacyChoices);
 
   const jsonLd = {
     '@context': 'https://schema.org',
