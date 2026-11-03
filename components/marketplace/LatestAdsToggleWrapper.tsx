@@ -82,7 +82,7 @@ export const LatestAdsToggleWrapper: React.FC<LatestAdsToggleWrapperProps> = ({
               categories={categories}
               subName={subName}
               variant="latest"
-              priority={idx === 0}
+              priority={idx < 5}
             />
           ))}
         </div>
@@ -96,7 +96,7 @@ export const LatestAdsToggleWrapper: React.FC<LatestAdsToggleWrapperProps> = ({
               categories={categories}
               subName={subName}
               variant="latest"
-              priority={idx === 0}
+              priority={idx < 3}
             />
           ))}
         </div>

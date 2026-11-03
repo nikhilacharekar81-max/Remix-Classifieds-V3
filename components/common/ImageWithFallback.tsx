@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Wrench, 
   Car, 
@@ -25,6 +25,24 @@ interface ImageWithFallbackProps {
   priority?: boolean;
 }
 
+const BROKEN_UNSPLASH_REPLACEMENTS: Record<string, string> = {
+  '1586191582056-a36a297921c5': '1601584115197-04ecc0da31d7',
+  '1580481072645-022f9a6d83d0': '1555041469-a586c61ea9bc',
+  '1626225967045-94408422617d': '1576678927484-cc907957088c',
+  '1534536281715-e28d7674177d': '1521791136064-7986c2920216',
+};
+
+function normalizeImageUrl(rawSrc: string): string {
+  if (!rawSrc) return '';
+  let normalized = rawSrc;
+  for (const [brokenId, validId] of Object.entries(BROKEN_UNSPLASH_REPLACEMENTS)) {
+    if (normalized.includes(brokenId)) {
+      normalized = normalized.replace(brokenId, validId);
+    }
+  }
+  return normalized;
+}
+
 // Map categories to beautiful design styles and icons
 const CATEGORY_FALLBACKS: Record<string, { icon: React.ComponentType<any>; bg: string; text: string }> = {
   cat_services: {
@@ -33,6 +51,11 @@ const CATEGORY_FALLBACKS: Record<string, { icon: React.ComponentType<any>; bg: s
     text: 'text-blue-600 dark:text-blue-400'
   },
   cat_vehicles: {
+    icon: Car,
+    bg: 'from-emerald-50 to-teal-100 dark:from-emerald-950/40 dark:to-teal-950/40',
+    text: 'text-emerald-600 dark:text-emerald-400'
+  },
+  cat_cars: {
     icon: Car,
     bg: 'from-emerald-50 to-teal-100 dark:from-emerald-950/40 dark:to-teal-950/40',
     text: 'text-emerald-600 dark:text-emerald-400'
@@ -47,7 +70,17 @@ const CATEGORY_FALLBACKS: Record<string, { icon: React.ComponentType<any>; bg: s
     bg: 'from-purple-50 to-fuchsia-100 dark:from-purple-950/40 dark:to-fuchsia-950/40',
     text: 'text-purple-600 dark:text-purple-400'
   },
+  cat_mobiles: {
+    icon: Smartphone,
+    bg: 'from-purple-50 to-fuchsia-100 dark:from-purple-950/40 dark:to-fuchsia-950/40',
+    text: 'text-purple-600 dark:text-purple-400'
+  },
   cat_real_estate: {
+    icon: Home,
+    bg: 'from-amber-50 to-orange-100 dark:from-amber-950/40 dark:to-orange-950/40',
+    text: 'text-amber-600 dark:text-amber-400'
+  },
+  cat_housing_realestate: {
     icon: Home,
     bg: 'from-amber-50 to-orange-100 dark:from-amber-950/40 dark:to-orange-950/40',
     text: 'text-amber-600 dark:text-amber-400'
@@ -77,9 +110,18 @@ export const ImageWithFallback: React.FC<ImageWithFallbackProps> = ({
   style,
   priority = false,
 }) => {
+  const resolvedSrc = normalizeImageUrl(src);
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
-  if (!src || failedSrc === src) {
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth === 0 && resolvedSrc) {
+      setFailedSrc(resolvedSrc);
+    }
+  }, [resolvedSrc]);
+
+  if (!resolvedSrc || failedSrc === resolvedSrc) {
     // Determine the fallback style
     const fallback = CATEGORY_FALLBACKS[categoryId] || {
       icon: ImageOff,
@@ -106,15 +148,17 @@ export const ImageWithFallback: React.FC<ImageWithFallbackProps> = ({
 
   return (
     <img
-      src={src}
+      ref={imgRef}
+      src={resolvedSrc}
       alt={alt}
       referrerPolicy="no-referrer"
       loading={priority ? 'eager' : 'lazy'}
       fetchPriority={priority ? 'high' : 'auto'}
       decoding="async"
-      onError={() => setFailedSrc(src)}
+      onError={() => setFailedSrc(resolvedSrc)}
       className={className}
       style={style}
     />
   );
 };
+

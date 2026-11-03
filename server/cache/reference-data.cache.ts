@@ -32,12 +32,14 @@ export const REFERENCE_CACHE_TAGS = {
  * bypass potentially stale Data Cache entries and attempt self-healing.
  */
 const failedInvalidationTags = new Set<string>();
+let hasKnownPendingOutboxEntries = true;
 
 function tryHealInvalidationTag(tag: string): void {
   if (!failedInvalidationTags.has(tag)) return;
   try {
     revalidateTag(tag);
     failedInvalidationTags.delete(tag);
+    recordDurableInvalidation(tag, true).catch(() => {});
   } catch (err) {
     console.error(`[ReferenceCache] Deferred revalidation retry failed for tag "${tag}":`, err);
   }
@@ -61,6 +63,7 @@ export async function enqueueDurableInvalidation(
   tag: string = REFERENCE_CACHE_TAGS.LISTING_COUNTS,
   tx?: DbExecutor
 ): Promise<{ id: string; generation?: number }> {
+  hasKnownPendingOutboxEntries = true;
   const now = new Date();
   const id = `outbox_${tag}`;
   const executor = tx ?? db;
@@ -184,6 +187,7 @@ export async function recordDurableInvalidation(
     }
 
     if (!success) {
+      hasKnownPendingOutboxEntries = true;
       ensureOutboxRetryWorkerStarted();
     }
   } catch (dbErr) {
@@ -200,7 +204,7 @@ export async function recordDurableInvalidation(
  * A worker can only complete the claim if the row still has its exact lease token and generation.
  */
 export async function processPendingInvalidations(): Promise<void> {
-  if (globalThis._outboxRetryWorkerRunning) return;
+  if (globalThis._outboxRetryWorkerRunning || !hasKnownPendingOutboxEntries) return;
   globalThis._outboxRetryWorkerRunning = true;
 
   try {
@@ -217,6 +221,11 @@ export async function processPendingInvalidations(): Promise<void> {
         )
         .limit(5)
     );
+
+    if (eligible.length === 0) {
+      hasKnownPendingOutboxEntries = false;
+      return;
+    }
 
     for (const entry of eligible) {
       const claimNow = new Date();

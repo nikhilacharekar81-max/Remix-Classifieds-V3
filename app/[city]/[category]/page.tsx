@@ -2,6 +2,7 @@ import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import {
+  getCachedCategoryHierarchy,
   getCategoriesWithLiveCounts,
   getCachedLocations,
   getCachedSystemSettings,
@@ -32,29 +33,26 @@ const getCategoryCityContext = cache(async (cityParam: string, categoryParam: st
   const { cleanSlug: cleanCitySlug } = stripChillySuffixes(cityParam);
   const { cleanSlug: cleanCatSlug } = stripChillySuffixes(categoryParam);
 
-  const [locations, allCategories, settings] = await Promise.all([
+  const [locations, hierarchy] = await Promise.all([
     getCachedLocations(),
-    getCategoriesWithLiveCounts(),
-    getCachedSystemSettings(),
+    getCachedCategoryHierarchy(),
   ]);
 
   const loc =
     locations.find((l) => l.slug === cleanCitySlug || l.slug === cityParam) ?? null;
   const firstCat =
-    allCategories.find((c) => c.slug === cleanCitySlug || c.slug === cityParam) ?? null;
+    hierarchy.find((c) => c.slug === cleanCitySlug || c.slug === cityParam) ?? null;
   const secondCat =
-    allCategories.find((c) => c.slug === cleanCatSlug || c.slug === categoryParam) ?? null;
+    hierarchy.find((c) => c.slug === cleanCatSlug || c.slug === categoryParam) ?? null;
 
-  const resolvedFirstCat = firstCat || unslugifyCategory(cityParam, allCategories).categoryObj;
+  const resolvedFirstCat = firstCat || unslugifyCategory(cityParam, hierarchy).categoryObj;
   const resolvedSecondCat =
-    secondCat || unslugifyCategory(categoryParam, allCategories).categoryObj;
+    secondCat || unslugifyCategory(categoryParam, hierarchy).categoryObj;
 
   return {
     cleanCitySlug,
     cleanCatSlug,
     locations,
-    allCategories,
-    settings,
     loc,
     firstCat,
     resolvedFirstCat,
@@ -130,8 +128,6 @@ export default async function CategoryCityPage({
     cleanCitySlug,
     cleanCatSlug,
     locations,
-    allCategories,
-    settings,
     loc,
     resolvedFirstCat,
     resolvedSecondCat,
@@ -139,12 +135,16 @@ export default async function CategoryCityPage({
 
   // Case 1: 2-segment All-India ParentCategory + Subcategory route (e.g. /services/home-services-repairs, /bikes/motorcycles)
   if (!loc && resolvedFirstCat && resolvedSecondCat) {
-    const paginated = await listingService.getPaginatedPageListings({
-      category: resolvedFirstCat.id,
-      subcategory: resolvedSecondCat.id,
-      query: cleanQuery,
-      pageSize: 50,
-    });
+    const [allCategories, settings, paginated] = await Promise.all([
+      getCategoriesWithLiveCounts(),
+      getCachedSystemSettings(),
+      listingService.getPaginatedPageListings({
+        category: resolvedFirstCat.id,
+        subcategory: resolvedSecondCat.id,
+        query: cleanQuery,
+        pageSize: 50,
+      }),
+    ]);
 
     const breadcrumbJsonLd = {
       '@context': 'https://schema.org',
@@ -227,13 +227,17 @@ export default async function CategoryCityPage({
   const subCatId =
     resolvedSecondCat && resolvedSecondCat.parentId ? resolvedSecondCat.id : undefined;
 
-  const paginated = await listingService.getPaginatedPageListings({
-    city: loc ? loc.name : undefined,
-    category: parentCatId,
-    subcategory: subCatId,
-    query: cleanQuery,
-    pageSize: 50,
-  });
+  const [allCategories, settings, paginated] = await Promise.all([
+    getCategoriesWithLiveCounts(),
+    getCachedSystemSettings(),
+    listingService.getPaginatedPageListings({
+      city: loc ? loc.name : undefined,
+      category: parentCatId,
+      subcategory: subCatId,
+      query: cleanQuery,
+      pageSize: 50,
+    }),
+  ]);
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',

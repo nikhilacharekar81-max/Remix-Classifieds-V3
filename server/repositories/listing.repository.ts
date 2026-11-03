@@ -417,6 +417,27 @@ export class ListingRepository {
         };
       }
 
+      if (offsetVal === 0) {
+        const rows = await withDbRetry(() => query);
+        const items = rows.map((r) => this.mapRowToListing(r));
+        if (rows.length < limitVal) {
+          return {
+            items,
+            total: items.length,
+          };
+        }
+        const countRes = await withDbRetry(() =>
+          db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(schema.listings)
+            .where(whereClause)
+        );
+        return {
+          items,
+          total: countRes[0]?.count || items.length,
+        };
+      }
+
       const [countRes, rows] = await withDbRetry(() =>
         Promise.all([
           db

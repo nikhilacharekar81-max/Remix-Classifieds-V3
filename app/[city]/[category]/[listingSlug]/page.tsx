@@ -6,6 +6,7 @@ import {
   isListingPubliclyAccessible,
 } from '@/server/services/listing.service';
 import {
+  getCachedCategoryHierarchy,
   getCategoriesWithLiveCounts,
   getCachedLocations,
   getCachedSystemSettings,
@@ -33,10 +34,9 @@ const getSubcategoryContext = cache(async (cityParam: string, listingSlugParam: 
   const { cleanSlug: cleanCitySlug } = stripChillySuffixes(cityParam);
   const { cleanSlug: cleanThirdSlug } = stripChillySuffixes(listingSlugParam);
 
-  const [categories, locations, settings] = await Promise.all([
-    getCategoriesWithLiveCounts(),
+  const [hierarchy, locations] = await Promise.all([
+    getCachedCategoryHierarchy(),
     getCachedLocations(),
-    getCachedSystemSettings(),
   ]);
 
   const loc =
@@ -44,17 +44,15 @@ const getSubcategoryContext = cache(async (cityParam: string, listingSlugParam: 
   const cityName = loc ? loc.name : unslugifyCity(cityParam, locations).cityName;
 
   const matchedSubCat =
-    categories.find((c) => c.slug === cleanThirdSlug || c.slug === listingSlugParam) ||
-    unslugifyCategory(listingSlugParam, categories).categoryObj;
+    hierarchy.find((c) => c.slug === cleanThirdSlug || c.slug === listingSlugParam) ||
+    unslugifyCategory(listingSlugParam, hierarchy).categoryObj;
 
   const parentCat = matchedSubCat
-    ? categories.find((c) => c.id === matchedSubCat.parentId)
+    ? hierarchy.find((c) => c.id === matchedSubCat.parentId)
     : undefined;
 
   return {
-    categories,
     locations,
-    settings,
     loc,
     cityName,
     matchedSubCat,
@@ -208,20 +206,24 @@ export default async function ListingHierarchicalPage({
     );
   }
 
-  const { categories, locations, settings, cityName, matchedSubCat, parentCat } =
+  const { locations, cityName, matchedSubCat, parentCat } =
     await getSubcategoryContext(city, listingSlug);
 
   if (!matchedSubCat) {
     notFound();
   }
 
-  const paginated = await listingService.getPaginatedPageListings({
-    city: cityName !== 'All India' ? cityName : undefined,
-    category: matchedSubCat.parentId || matchedSubCat.id,
-    subcategory: matchedSubCat.parentId ? matchedSubCat.id : undefined,
-    query: cleanQuery,
-    pageSize: 50,
-  });
+  const [categories, settings, paginated] = await Promise.all([
+    getCategoriesWithLiveCounts(),
+    getCachedSystemSettings(),
+    listingService.getPaginatedPageListings({
+      city: cityName !== 'All India' ? cityName : undefined,
+      category: matchedSubCat.parentId || matchedSubCat.id,
+      subcategory: matchedSubCat.parentId ? matchedSubCat.id : undefined,
+      query: cleanQuery,
+      pageSize: 50,
+    }),
+  ]);
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',

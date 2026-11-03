@@ -117,7 +117,7 @@ export const PublicMarketplacePage: React.FC<PublicMarketplacePageProps> = ({
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 space-y-6 w-full">
         {mode === 'directory' ? (
-          <div className="space-y-8 animate-in fade-in duration-200">
+          <div className="space-y-8">
             <MarketplaceHeroBanner
               effectiveCity={effectiveCity}
               effectiveSearch={effectiveSearch}

@@ -26,6 +26,7 @@ let navFeedbackState: NavigationFeedbackState = {
   pendingLinkId: null,
 };
 let navSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+let activeLinkResetCallback: (() => void) | null = null;
 const navListeners = new Set<() => void>();
 
 function emitNavFeedbackChange() {
@@ -63,7 +64,11 @@ export function getCurrentNormalizedBrowserUrl(): string {
  * Returns `false` if the same navigation is already in progress (to prevent duplicate clicks)
  * or if the browser is already at `targetUrl` with no pending navigation.
  */
-export function startNavigationFeedback(targetUrl: string, linkId?: string): boolean {
+export function startNavigationFeedback(
+  targetUrl: string,
+  linkId?: string,
+  onReset?: () => void
+): boolean {
   if (typeof window === 'undefined') return true;
 
   const normalizedTarget = normalizeInternalUrl(targetUrl);
@@ -81,7 +86,13 @@ export function startNavigationFeedback(targetUrl: string, linkId?: string): boo
   if (navSafetyTimer) {
     clearTimeout(navSafetyTimer);
   }
+  if (activeLinkResetCallback) {
+    const prevReset = activeLinkResetCallback;
+    activeLinkResetCallback = null;
+    prevReset();
+  }
 
+  activeLinkResetCallback = onReset || null;
   navFeedbackState = {
     pendingUrl: normalizedTarget,
     pendingLinkId: linkId || null,
@@ -100,6 +111,11 @@ export function clearNavigationFeedback(): void {
   if (navSafetyTimer) {
     clearTimeout(navSafetyTimer);
     navSafetyTimer = null;
+  }
+  if (activeLinkResetCallback) {
+    const cb = activeLinkResetCallback;
+    activeLinkResetCallback = null;
+    cb();
   }
   if (navFeedbackState.pendingUrl !== null || navFeedbackState.pendingLinkId !== null) {
     navFeedbackState = {

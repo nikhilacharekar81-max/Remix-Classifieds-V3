@@ -2,6 +2,7 @@ import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import {
+  getCachedCategoryHierarchy,
   getCategoriesWithLiveCounts,
   getCachedLocations,
   getCachedSystemSettings,
@@ -19,18 +20,17 @@ interface CityPageProps {
 
 const getCityPageContext = cache(async (cityParam: string) => {
   const { cleanSlug } = stripChillySuffixes(cityParam);
-  const [locations, categories, settings] = await Promise.all([
+  const [locations, hierarchy] = await Promise.all([
     getCachedLocations(),
-    getCategoriesWithLiveCounts(),
-    getCachedSystemSettings(),
+    getCachedCategoryHierarchy(),
   ]);
 
   const loc =
     locations.find((l) => l.slug === cleanSlug || l.slug === cityParam) ?? null;
   const cat =
-    categories.find((c) => c.slug === cleanSlug || c.slug === cityParam) ?? null;
+    hierarchy.find((c) => c.slug === cleanSlug || c.slug === cityParam) ?? null;
 
-  return { cleanSlug, locations, categories, settings, loc, cat };
+  return { cleanSlug, locations, loc, cat };
 });
 
 export async function generateMetadata({ params, searchParams }: CityPageProps): Promise<Metadata> {
@@ -85,7 +85,7 @@ export default async function CityPage({ params, searchParams }: CityPageProps) 
     if (typeof v === 'string') cleanQuery[k] = v;
   }
 
-  const { cleanSlug, locations, categories, settings, loc, cat } = await getCityPageContext(city);
+  const { cleanSlug, locations, loc, cat } = await getCityPageContext(city);
 
   const isSpecialCity = cleanSlug === 'all-india' || cleanSlug === 'india' || cleanSlug === 'all';
   if (!loc && !cat && !isSpecialCity) {
@@ -94,12 +94,16 @@ export default async function CityPage({ params, searchParams }: CityPageProps) 
 
   // Case 1: Single-segment All-India Category or Subcategory route (e.g. /cars, /mobiles, /jobs)
   if (!loc && cat) {
-    const paginated = await listingService.getPaginatedPageListings({
-      category: cat.parentId || cat.id,
-      subcategory: cat.parentId ? cat.id : undefined,
-      query: cleanQuery,
-      pageSize: 50,
-    });
+    const [categories, settings, paginated] = await Promise.all([
+      getCategoriesWithLiveCounts(),
+      getCachedSystemSettings(),
+      listingService.getPaginatedPageListings({
+        category: cat.parentId || cat.id,
+        subcategory: cat.parentId ? cat.id : undefined,
+        query: cleanQuery,
+        pageSize: 50,
+      }),
+    ]);
 
     const breadcrumbJsonLd = {
       '@context': 'https://schema.org',
@@ -145,10 +149,11 @@ export default async function CityPage({ params, searchParams }: CityPageProps) 
 
   // Case 2: City directory route (e.g. /mumbai, /delhi)
   const cityName = loc ? loc.name : unslugifyCity(city, locations).cityName;
-  const latestCityItems = await listingService.getCachedLatestListings(
-    loc ? loc.name : undefined,
-    10
-  );
+  const [categories, settings, latestCityItems] = await Promise.all([
+    getCategoriesWithLiveCounts(),
+    getCachedSystemSettings(),
+    listingService.getCachedLatestListings(loc ? loc.name : undefined, 10),
+  ]);
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',

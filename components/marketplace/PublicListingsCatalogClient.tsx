@@ -235,7 +235,7 @@ export const PublicListingsCatalogClient: React.FC<PublicListingsCatalogClientPr
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-in fade-in duration-200">
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
       {/* Desktop Sidebar: Server-Rendered CategoryTreeSidebar + Optional PropertyFiltersSidebar */}
       <div className="hidden md:block md:col-span-1 space-y-4 self-start">
         {categorySidebarNode}
@@ -299,7 +299,7 @@ export const PublicListingsCatalogClient: React.FC<PublicListingsCatalogClientPr
                     categories={categories}
                     subName={getCategoryName(listing.categoryId, listing.subcategoryId)}
                     variant="catalog"
-                    priority={idx === 0}
+                    priority={idx < 8}
                   />
                 ))}
               </div>
@@ -313,7 +313,7 @@ export const PublicListingsCatalogClient: React.FC<PublicListingsCatalogClientPr
                     categories={categories}
                     subName={getCategoryName(listing.categoryId, listing.subcategoryId)}
                     variant="catalog"
-                    priority={idx === 0}
+                    priority={idx < 4}
                   />
                 ))}
               </div>
