@@ -8,6 +8,7 @@ import { LatestAdsSection } from './LatestAdsSection';
 import { CategoryTreeSidebar } from './CategoryTreeSidebar';
 import { PublicListingsCatalogClient } from './PublicListingsCatalogClient';
 import { SeoContentBlock } from './SeoContentBlock';
+import { getSeoContent } from '@/lib/data/seoContentData';
 import { Footer } from '@/components/common/Footer';
 
 export interface PublicMarketplacePageProps {
@@ -63,6 +64,8 @@ export const PublicMarketplacePage: React.FC<PublicMarketplacePageProps> = ({
       : effectiveCategory !== 'all'
       ? effectiveCategory
       : 'home';
+
+  const seoData = getSeoContent(effectiveCity || 'All India', seoCategoryName, seoCategoryId);
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] text-[#202124] flex flex-col font-sans overflow-x-hidden">
@@ -136,6 +139,7 @@ export const PublicMarketplacePage: React.FC<PublicMarketplacePageProps> = ({
         locationName={effectiveCity || 'All India'}
         categoryName={seoCategoryName}
         categoryId={seoCategoryId}
+        seoData={seoData}
       />
 
       <Footer

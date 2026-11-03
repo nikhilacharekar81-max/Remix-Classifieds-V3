@@ -3,14 +3,18 @@
 import React, { useState, useRef } from 'react';
 import { Search } from 'lucide-react';
 import { Category, Listing } from '@/lib/types';
+import dynamic from 'next/dynamic';
 import { NavLink } from '@/components/common/NavLink';
 import { navigateTo } from '@/lib/router/useRouter';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
-import { PropertyFiltersSidebar } from './PropertyFiltersSidebar';
 import { MarketplaceListingsToolbar } from './MarketplaceListingsToolbar';
 import { ListingGridCard } from './ListingGridCard';
 import { ListingListicleCard } from './ListingListicleCard';
 import { MarketplacePagination } from './MarketplacePagination';
+
+const PropertyFiltersSidebar = dynamic(() =>
+  import('./PropertyFiltersSidebar').then((m) => m.PropertyFiltersSidebar)
+);
 
 export interface PublicListingsCatalogClientProps {
   effectiveCity: string;

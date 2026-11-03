@@ -16,8 +16,42 @@ export function doesListingUpdateAffectCounts(
     fields.status !== undefined ||
     fields.categoryId !== undefined ||
     fields.subcategoryId !== undefined ||
-    fields.expiresAt !== undefined
+    fields.expiresAt !== undefined ||
+    fields.title !== undefined ||
+    fields.description !== undefined ||
+    fields.price !== undefined ||
+    fields.images !== undefined ||
+    fields.city !== undefined ||
+    fields.state !== undefined ||
+    fields.locality !== undefined ||
+    fields.customAttributes !== undefined ||
+    fields.isFeatured !== undefined ||
+    fields.featuredUntil !== undefined ||
+    fields.isBoosted !== undefined ||
+    fields.boostStatus !== undefined ||
+    fields.boostExpiresAt !== undefined
   );
+}
+
+export function toPublicListingCard(listing: Listing): Listing {
+  return {
+    ...listing,
+    sellerPhone: '',
+    description: listing.description ? listing.description.slice(0, 220) : '',
+    images: listing.images && listing.images.length > 0 ? [listing.images[0]] : [],
+    rejectionReason: undefined,
+    boostPaymentId: undefined,
+    spamScore: 0,
+  };
+}
+
+export function toPublicListingDetail(listing: Listing): Listing {
+  return {
+    ...listing,
+    rejectionReason: undefined,
+    boostPaymentId: undefined,
+    spamScore: 0,
+  };
 }
 
 export interface ListingFilterQuery {
@@ -44,6 +78,7 @@ export interface ListingFilterQuery {
   sort?: string;
   limit?: number;
   offset?: number;
+  skipCount?: boolean;
 }
 
 export class ListingRepository {
@@ -100,26 +135,9 @@ export class ListingRepository {
   public async findById(id: string): Promise<Listing | null> {
     try {
       const cleanId = id.trim();
-      const digitsMatch = cleanId.match(/^lst_(\d+)$/i);
 
-      if (digitsMatch) {
-        const suffix = `_${digitsMatch[1]}`;
-        const rows = await withDbRetry(() =>
-          db
-            .select()
-            .from(schema.listings)
-            .where(
-              or(
-                eq(schema.listings.id, cleanId),
-                sql`${schema.listings.id} LIKE ${'%' + suffix}`
-              )
-            )
-            .limit(1)
-        );
-        return rows.length > 0 ? this.mapRowToListing(rows[0]) : null;
-      }
-
-      const rows = await withDbRetry(() =>
+      // 1. Always attempt an exact B-tree primary key lookup first (O(1) index seek)
+      const exactRows = await withDbRetry(() =>
         db
           .select()
           .from(schema.listings)
@@ -127,7 +145,25 @@ export class ListingRepository {
           .limit(1)
       );
 
-      return rows.length > 0 ? this.mapRowToListing(rows[0]) : null;
+      if (exactRows.length > 0) {
+        return this.mapRowToListing(exactRows[0]);
+      }
+
+      // 2. Fallback to suffix matching only if cleanId is a short lst_<digits> slug and exact match wasn't found
+      const digitsMatch = cleanId.match(/^lst_(\d+)$/i);
+      if (digitsMatch) {
+        const suffix = `_${digitsMatch[1]}`;
+        const suffixRows = await withDbRetry(() =>
+          db
+            .select()
+            .from(schema.listings)
+            .where(sql`${schema.listings.id} LIKE ${'%' + suffix}`)
+            .limit(1)
+        );
+        return suffixRows.length > 0 ? this.mapRowToListing(suffixRows[0]) : null;
+      }
+
+      return null;
     } catch (error) {
       console.error(`ListingRepository.findById error for ${id}:`, error);
       throw new Error(`Failed to find listing with id ${id}`, { cause: error });
@@ -342,6 +378,15 @@ export class ListingRepository {
       query.limit(limitVal);
       if (offsetVal > 0) {
         query.offset(offsetVal);
+      }
+
+      if (options.skipCount) {
+        const rows = await withDbRetry(() => query);
+        const items = rows.map((r) => this.mapRowToListing(r));
+        return {
+          items,
+          total: items.length,
+        };
       }
 
       const [countRes, rows] = await withDbRetry(() =>

@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { NavLink } from '@/components/common/NavLink';
-import { useAppOptional } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContextInstance';
 import { Category } from '@/lib/types';
 import {
   ShieldCheck,

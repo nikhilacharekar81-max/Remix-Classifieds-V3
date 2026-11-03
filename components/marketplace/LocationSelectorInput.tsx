@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useRef, useEffect, useMemo, useId } from 'react';
-import { useAppOptional } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContextInstance';
 import { Category, LocationItem } from '@/lib/types';
 import {
   MapPin,

@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-import { useAppOptional } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContextInstance';
 import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
 import { X, Cookie, Lock, BarChart2, Radio, Sliders, Info } from 'lucide-react';
 

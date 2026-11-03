@@ -1,7 +1,6 @@
 import { cache } from 'react';
 import type { Metadata } from 'next';
-import { listingRepository } from '@/server/repositories/listing.repository';
-import { listingService } from '@/server/services/listing.service';
+import { listingService, getCachedPublicListingById } from '@/server/services/listing.service';
 import {
   getCategoriesWithLiveCounts,
   getCachedLocations,
@@ -24,9 +23,7 @@ interface ListingOrSubcategoryPageProps {
   searchParams?: Promise<Record<string, string | undefined>>;
 }
 
-const getListingById = cache(async (id: string) => {
-  return listingRepository.findById(id);
-});
+const getListingById = getCachedPublicListingById;
 
 const getSubcategoryContext = cache(async (cityParam: string, listingSlugParam: string) => {
   const { cleanSlug: cleanCitySlug } = stripChillySuffixes(cityParam);
@@ -165,12 +162,11 @@ export default async function ListingHierarchicalPage({
       notFound();
     }
 
-    const relatedResult = await listingRepository.findMarketplaceListings({
-      status: 'approved',
-      category: listing.categoryId,
-      limit: 5,
-      offset: 0,
-    });
+    const relatedItems = await listingService.getCachedRelatedListings(
+      listing.categoryId,
+      listing.id,
+      4
+    );
 
     const jsonLd = {
       '@context': 'https://schema.org/',
@@ -199,7 +195,7 @@ export default async function ListingHierarchicalPage({
         />
         <PublicListingDetailPage
           listing={listing}
-          relatedListings={relatedResult.items}
+          relatedListings={relatedItems}
           categories={categories}
           locations={locations}
           enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}

@@ -1,5 +1,5 @@
 import { PublicMarketplacePage } from '@/components/marketplace/PublicMarketplacePage';
-import { listingRepository } from '@/server/repositories/listing.repository';
+import { listingService } from '@/server/services/listing.service';
 import {
   getCategoriesWithLiveCounts,
   getCachedLocations,
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
-  let latestResult = { items: [] as any[], total: 0 };
+  let latestItems: any[] = [];
   let categories = INITIAL_CATEGORIES;
   let locations = INITIAL_LOCATIONS;
   let enablePrivacyChoices = false;
@@ -36,16 +36,12 @@ export default async function HomePage() {
   try {
     const [fetchedLatest, fetchedCategories, fetchedLocations, fetchedSettings] =
       await Promise.all([
-        listingRepository.findMarketplaceListings({
-          status: 'approved',
-          limit: 10,
-          offset: 0,
-        }),
+        listingService.getCachedLatestListings('All India', 10),
         getCategoriesWithLiveCounts(),
         getCachedLocations(),
         getCachedSystemSettings(),
       ]);
-    latestResult = fetchedLatest;
+    latestItems = fetchedLatest;
     if (fetchedCategories.length > 0) categories = fetchedCategories;
     if (fetchedLocations.length > 0) locations = fetchedLocations;
     enablePrivacyChoices = Boolean(fetchedSettings?.enablePrivacyChoices);
@@ -85,8 +81,8 @@ export default async function HomePage() {
         effectiveCity="All India"
         categories={categories}
         locations={locations}
-        listings={latestResult.items}
-        totalListings={latestResult.total}
+        listings={latestItems}
+        totalListings={0}
         enablePrivacyChoices={enablePrivacyChoices}
       />
     </>

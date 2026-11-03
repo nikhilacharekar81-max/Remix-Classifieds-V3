@@ -2,6 +2,7 @@ import { boostRepository } from '@/server/repositories/boost.repository';
 import { paymentRepository } from '@/server/repositories/payment.repository';
 import { listingRepository } from '@/server/repositories/listing.repository';
 import { adminRepository } from '@/server/repositories/admin.repository';
+import { invalidateLiveListingCountsCache } from '@/server/cache/reference-data.cache';
 import { PromotionalPackage, OrderTransaction, BoostAnalyticsSummary, Listing } from '@/lib/types';
 import crypto from 'node:crypto';
 
@@ -328,6 +329,12 @@ export class BoostService {
         };
       }
 
+      try {
+        await invalidateLiveListingCountsCache();
+      } catch (cacheErr) {
+        console.error('[BoostService] Cache invalidation warning after boost activation:', cacheErr);
+      }
+
       // Audit log in PostgreSQL with real authenticated actor and IP metadata
       await adminRepository.createAuditLog({
         adminId: userId,
@@ -428,6 +435,12 @@ export class BoostService {
         };
       }
 
+      try {
+        await invalidateLiveListingCountsCache();
+      } catch (cacheErr) {
+        console.error('[BoostService] Cache invalidation warning after webhook boost activation:', cacheErr);
+      }
+
       return {
         success: true,
         duplicate: false,
@@ -454,6 +467,13 @@ export class BoostService {
    */
   public async cleanupExpiredBoosts(): Promise<number> {
     const res = await boostRepository.cleanupExpiredBoosts();
+    if (res.expiredCount > 0) {
+      try {
+        await invalidateLiveListingCountsCache();
+      } catch (cacheErr) {
+        console.error('[BoostService] Cache invalidation warning after expired boost cleanup:', cacheErr);
+      }
+    }
     return res.expiredCount;
   }
 

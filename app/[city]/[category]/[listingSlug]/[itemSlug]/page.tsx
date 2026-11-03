@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { listingRepository } from '@/server/repositories/listing.repository';
+import { listingService, getCachedPublicListingById } from '@/server/services/listing.service';
 import {
   getCategoriesWithLiveCounts,
   getCachedLocations,
@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: FourSegmentListingPageProps):
   const { city, category, listingSlug, itemSlug } = await params;
   const { itemId } = stripChillySuffixes(itemSlug);
 
-  const listing = itemId ? await listingRepository.findById(itemId) : null;
+  const listing = itemId ? await getCachedPublicListingById(itemId) : null;
   if (!listing || listing.status !== 'approved') {
     return {
       title: 'Listing Not Found | Classifieds V2',
@@ -75,7 +75,7 @@ export default async function FourSegmentListingPage({ params }: FourSegmentList
   }
 
   const [listing, categories, locations, settings] = await Promise.all([
-    listingRepository.findById(itemId),
+    getCachedPublicListingById(itemId),
     getCategoriesWithLiveCounts(),
     getCachedLocations(),
     getCachedSystemSettings(),
@@ -85,12 +85,11 @@ export default async function FourSegmentListingPage({ params }: FourSegmentList
     notFound();
   }
 
-  const relatedResult = await listingRepository.findMarketplaceListings({
-    status: 'approved',
-    category: listing.categoryId,
-    limit: 5,
-    offset: 0,
-  });
+  const relatedItems = await listingService.getCachedRelatedListings(
+    listing.categoryId,
+    listing.id,
+    4
+  );
 
   const jsonLd = {
     '@context': 'https://schema.org/',
@@ -119,7 +118,7 @@ export default async function FourSegmentListingPage({ params }: FourSegmentList
       />
       <PublicListingDetailPage
         listing={listing}
-        relatedListings={relatedResult.items}
+        relatedListings={relatedItems}
         categories={categories}
         locations={locations}
         enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}

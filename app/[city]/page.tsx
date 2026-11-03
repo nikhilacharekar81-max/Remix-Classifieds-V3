@@ -6,7 +6,6 @@ import {
   getCachedLocations,
   getCachedSystemSettings,
 } from '@/server/cache/reference-data.cache';
-import { listingRepository } from '@/server/repositories/listing.repository';
 import { listingService } from '@/server/services/listing.service';
 import { PublicMarketplacePage } from '@/components/marketplace/PublicMarketplacePage';
 import { stripChillySuffixes, unslugifyCity, serializeJsonLd } from '@/lib/utils/seoAndUrlHelper';
@@ -146,12 +145,10 @@ export default async function CityPage({ params, searchParams }: CityPageProps) 
 
   // Case 2: City directory route (e.g. /mumbai, /delhi)
   const cityName = loc ? loc.name : unslugifyCity(city, locations).cityName;
-  const latestCityResult = await listingRepository.findMarketplaceListings({
-    status: 'approved',
-    city: loc ? loc.name : undefined,
-    limit: 10,
-    offset: 0,
-  });
+  const latestCityItems = await listingService.getCachedLatestListings(
+    loc ? loc.name : undefined,
+    10
+  );
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -184,8 +181,8 @@ export default async function CityPage({ params, searchParams }: CityPageProps) 
         query={cleanQuery}
         categories={categories}
         locations={locations}
-        listings={latestCityResult.items}
-        totalListings={latestCityResult.total}
+        listings={latestCityItems}
+        totalListings={0}
         enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}
       />
     </>

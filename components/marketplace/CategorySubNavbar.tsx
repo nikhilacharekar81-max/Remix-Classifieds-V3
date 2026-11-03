@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, X, Grid, Loader2 } from 'lucide-react';
-import { useAppOptional } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContextInstance';
 import { Category } from '@/lib/types';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
 import { NavLink } from '@/components/common/NavLink';

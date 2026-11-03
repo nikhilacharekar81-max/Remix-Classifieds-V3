@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-import { useAppOptional } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContextInstance';
 import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
 import { X, CheckCircle2, ShieldCheck, Lock } from 'lucide-react';
 

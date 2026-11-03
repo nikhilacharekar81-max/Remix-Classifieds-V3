@@ -1,6 +1,6 @@
 import { cache } from 'react';
 import { PublicListingDetailPage } from '@/components/marketplace/PublicListingDetailPage';
-import { listingRepository } from '@/server/repositories/listing.repository';
+import { listingService, getCachedPublicListingById } from '@/server/services/listing.service';
 import {
   getCategoriesWithLiveCounts,
   getCachedLocations,
@@ -12,9 +12,7 @@ import type { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
 
-const getListingById = cache(async (id: string) => {
-  return listingRepository.findById(id);
-});
+const getListingById = getCachedPublicListingById;
 
 export async function generateMetadata({
   params,
@@ -74,12 +72,11 @@ export default async function ItemDetailPage({
     notFound();
   }
 
-  const relatedResult = await listingRepository.findMarketplaceListings({
-    status: 'approved',
-    category: listing.categoryId,
-    limit: 5,
-    offset: 0,
-  });
+  const relatedItems = await listingService.getCachedRelatedListings(
+    listing.categoryId,
+    listing.id,
+    4
+  );
 
   const jsonLd = {
     '@context': 'https://schema.org/',
@@ -108,7 +105,7 @@ export default async function ItemDetailPage({
       />
       <PublicListingDetailPage
         listing={listing}
-        relatedListings={relatedResult.items}
+        relatedListings={relatedItems}
         categories={categories}
         locations={locations}
         enablePrivacyChoices={Boolean(settings?.enablePrivacyChoices)}

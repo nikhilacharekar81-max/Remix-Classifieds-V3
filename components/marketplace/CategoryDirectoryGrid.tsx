@@ -30,7 +30,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Category } from '@/lib/types';
-import { useAppOptional } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContextInstance';
 import { useNavigationFeedback } from '@/lib/router/useRouter';
 import { buildChillyUrl } from '@/lib/utils/seoAndUrlHelper';
 import { NavLink } from '@/components/common/NavLink';

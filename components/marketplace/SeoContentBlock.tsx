@@ -1,25 +1,31 @@
 'use client';
 import React, { useState } from 'react';
-import { getSeoContent } from '@/lib/data/seoContentData';
+import type { SeoContentEntry } from '@/lib/data/seoContentData';
 import { Sparkles, MapPin, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
 
 interface SeoContentBlockProps {
   locationName: string;
   categoryName: string;
   categoryId: string;
+  seoData?: Pick<SeoContentEntry, 'title' | 'content' | 'wordCount' | 'lastUpdated'>;
 }
 
 export const SeoContentBlock: React.FC<SeoContentBlockProps> = ({
   locationName,
   categoryName,
-  categoryId,
+  seoData: propSeoData,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const seoData = getSeoContent(locationName, categoryName, categoryId);
-
   const isIndia = !locationName || locationName === 'All India' || locationName === 'India';
   const displayLocation = isIndia ? 'India' : locationName;
+
+  const seoData = propSeoData || {
+    title: `${categoryName || 'Classifieds'} in ${displayLocation} — Buy, Sell & Verified Local Directory`,
+    content: `Explore verified ${categoryName || 'classified'} listings in ${displayLocation}. Connect directly with local buyers, sellers, and service providers with zero middlemen or brokerage fees on Chillyads.`,
+    wordCount: 165,
+    lastUpdated: 'April 2026',
+  };
 
   return (
     <section className="my-8 border-t border-slate-200 dark:border-slate-800 pt-8 pb-4">

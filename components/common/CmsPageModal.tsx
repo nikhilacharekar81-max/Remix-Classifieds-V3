@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import { useAppOptional } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContextInstance';
 import { INITIAL_CMS_PAGES } from '@/lib/data/cmsPagesData';
 import { dispatchPublicToast } from '@/components/common/ChunkErrorRecovery';
 import { X, ShieldCheck, FileText, Calendar, Edit3, Share2, Printer } from 'lucide-react';

@@ -43,6 +43,14 @@ function tryHealInvalidationTag(tag: string): void {
   }
 }
 
+export function isListingCacheBypassed(): boolean {
+  if (!failedInvalidationTags.has(REFERENCE_CACHE_TAGS.LISTING_COUNTS)) {
+    return false;
+  }
+  tryHealInvalidationTag(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
+  return failedInvalidationTags.has(REFERENCE_CACHE_TAGS.LISTING_COUNTS);
+}
+
 /**
  * Enqueues a durable 'pending' cache invalidation outbox entry in PostgreSQL.
  * When called with a transaction executor `tx`, uses the exact same transaction connection
@@ -368,11 +376,13 @@ export const getCachedCategoryHierarchy = cache(async (): Promise<Category[]> =>
  */
 export const getCachedLiveListingCounts = cache(async () => {
   ensureOutboxRetryWorkerStarted();
-  // Throttle opportunistic outbox check to at most once every 60s to avoid extra DB queries on every request
-  const nowMs = Date.now();
-  if (nowMs - lastOutboxCheckMs > 60000) {
-    lastOutboxCheckMs = nowMs;
-    processPendingInvalidations().catch(() => {});
+  // Only run opportunistic request-path outbox check if background timer could not be started
+  if (!globalThis._outboxRetryWorkerTimer) {
+    const nowMs = Date.now();
+    if (nowMs - lastOutboxCheckMs > 60000) {
+      lastOutboxCheckMs = nowMs;
+      processPendingInvalidations().catch(() => {});
+    }
   }
 
   let counts: { parentCountMap: Record<string, number>; subCountMap: Record<string, number> };

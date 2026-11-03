@@ -15,7 +15,7 @@ import {
   MapPin,
   Loader2,
 } from 'lucide-react';
-import { useAppOptional } from '@/context/AppContext';
+import { useAppOptional } from '@/context/AppContextInstance';
 import { UserAccount } from '@/lib/types';
 import { NavLink } from '@/components/common/NavLink';
 import { useNavigationFeedback } from '@/lib/router/useRouter';

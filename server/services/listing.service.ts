@@ -1,16 +1,114 @@
+import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import {
   listingRepository,
   ListingFilterQuery,
   doesListingUpdateAffectCounts,
+  toPublicListingCard,
+  toPublicListingDetail,
 } from '@/server/repositories/listing.repository';
 import { adminRepository } from '@/server/repositories/admin.repository';
-import { invalidateLiveListingCountsCache } from '@/server/cache/reference-data.cache';
+import {
+  invalidateLiveListingCountsCache,
+  REFERENCE_CACHE_TAGS,
+  isListingCacheBypassed,
+} from '@/server/cache/reference-data.cache';
 import { Listing } from '@/lib/types';
 import { normalizeAdTitle, DUPLICATE_TITLE_ERROR_MESSAGE } from '@/lib/utils/adTitleValidation';
 
 export interface ListingFilterOptions extends ListingFilterQuery {
   userCoords?: { latitude: number; longitude: number } | null;
 }
+
+const fetchCachedLatestListingsInternal = unstable_cache(
+  async (cityKey: string, limit: number): Promise<Listing[]> => {
+    const res = await listingRepository.findMarketplaceListings({
+      status: 'approved',
+      city: cityKey === '__ALL_INDIA__' ? undefined : cityKey,
+      limit,
+      offset: 0,
+      skipCount: true,
+    });
+    return res.items.map(toPublicListingCard);
+  },
+  ['marketplace-cached-latest-listings-v1'],
+  {
+    tags: [REFERENCE_CACHE_TAGS.LISTING_COUNTS],
+    revalidate: 300,
+  }
+);
+
+const fetchCachedListingByIdInternal = unstable_cache(
+  async (cleanId: string): Promise<Listing | null> => {
+    const item = await listingRepository.findById(cleanId);
+    return item ? toPublicListingDetail(item) : null;
+  },
+  ['marketplace-cached-listing-detail-v1'],
+  {
+    tags: [REFERENCE_CACHE_TAGS.LISTING_COUNTS],
+    revalidate: 300,
+  }
+);
+
+const fetchCachedRelatedListingsInternal = unstable_cache(
+  async (categoryId: string, limit: number): Promise<Listing[]> => {
+    const res = await listingRepository.findMarketplaceListings({
+      status: 'approved',
+      category: categoryId,
+      limit,
+      offset: 0,
+      skipCount: true,
+    });
+    return res.items.map(toPublicListingCard);
+  },
+  ['marketplace-cached-related-listings-v1'],
+  {
+    tags: [REFERENCE_CACHE_TAGS.LISTING_COUNTS],
+    revalidate: 300,
+  }
+);
+
+const fetchCachedPaginatedCatalogInternal = unstable_cache(
+  async (
+    serializedFilter: string,
+    requestedPage: number,
+    pageSize: number
+  ): Promise<{
+    items: Listing[];
+    total: number;
+    page: number;
+    totalPages: number;
+    pageSize: number;
+  }> => {
+    const filterOptions: ListingFilterQuery = JSON.parse(serializedFilter);
+    let result = await listingRepository.findMarketplaceListings(filterOptions);
+    const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
+    let validPage = requestedPage;
+
+    if (requestedPage > totalPages && result.total > 0) {
+      validPage = totalPages;
+      result = await listingRepository.findMarketplaceListings({
+        ...filterOptions,
+        offset: (validPage - 1) * pageSize,
+      });
+    } else if (result.total === 0) {
+      validPage = 1;
+    }
+
+    return {
+      items: result.items.map(toPublicListingCard),
+      total: result.total,
+      page: validPage,
+      totalPages,
+      pageSize,
+    };
+  },
+  ['marketplace-cached-paginated-catalog-v1'],
+  {
+    tags: [REFERENCE_CACHE_TAGS.LISTING_COUNTS],
+    revalidate: 300,
+  }
+);
 
 export class ListingService {
   /**
@@ -79,33 +177,83 @@ export class ListingService {
       offset: (requestedPage - 1) * pageSize,
     };
 
-    let result = await listingRepository.findMarketplaceListings(filterOptions);
-    const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
-    let validPage = requestedPage;
+    const serializedFilter = JSON.stringify(filterOptions);
 
-    // Safely clamp out-of-range page numbers to the last valid page
-    if (requestedPage > totalPages && result.total > 0) {
-      validPage = totalPages;
-      result = await listingRepository.findMarketplaceListings({
-        ...filterOptions,
-        offset: (validPage - 1) * pageSize,
-      });
-    } else if (result.total === 0) {
-      validPage = 1;
+    if (isListingCacheBypassed()) {
+      let result = await listingRepository.findMarketplaceListings(filterOptions);
+      const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
+      let validPage = requestedPage;
+
+      if (requestedPage > totalPages && result.total > 0) {
+        validPage = totalPages;
+        result = await listingRepository.findMarketplaceListings({
+          ...filterOptions,
+          offset: (validPage - 1) * pageSize,
+        });
+      } else if (result.total === 0) {
+        validPage = 1;
+      }
+
+      return {
+        items: result.items.map(toPublicListingCard),
+        total: result.total,
+        page: validPage,
+        totalPages,
+        pageSize,
+      };
     }
 
-    return {
-      items: result.items,
-      total: result.total,
-      page: validPage,
-      totalPages,
-      pageSize,
-    };
+    return await fetchCachedPaginatedCatalogInternal(serializedFilter, requestedPage, pageSize);
+  }
+
+  public async getCachedLatestListings(city?: string, limit: number = 10): Promise<Listing[]> {
+    const cityKey =
+      city && city !== 'All India' && city !== 'all-india' && city !== 'all'
+        ? city.trim()
+        : '__ALL_INDIA__';
+
+    if (isListingCacheBypassed()) {
+      const res = await listingRepository.findMarketplaceListings({
+        status: 'approved',
+        city: cityKey === '__ALL_INDIA__' ? undefined : cityKey,
+        limit,
+        offset: 0,
+        skipCount: true,
+      });
+      return res.items.map(toPublicListingCard);
+    }
+
+    return await fetchCachedLatestListingsInternal(cityKey, limit);
+  }
+
+  public async getCachedRelatedListings(
+    categoryId: string,
+    excludeId?: string,
+    limit: number = 5
+  ): Promise<Listing[]> {
+    const items = isListingCacheBypassed()
+      ? (
+          await listingRepository.findMarketplaceListings({
+            status: 'approved',
+            category: categoryId,
+            limit: limit + 1,
+            offset: 0,
+            skipCount: true,
+          })
+        ).items.map(toPublicListingCard)
+      : await fetchCachedRelatedListingsInternal(categoryId, limit + 1);
+
+    return excludeId ? items.filter((l) => l.id !== excludeId).slice(0, limit) : items.slice(0, limit);
   }
 
   public async getListingById(id: string): Promise<Listing | null> {
     if (!id) return null;
-    return await listingRepository.findById(id.trim());
+    const cleanId = id.trim();
+    if (isListingCacheBypassed()) {
+      const item = await listingRepository.findById(cleanId);
+      return item ? toPublicListingDetail(item) : null;
+    }
+    return await fetchCachedListingByIdInternal(cleanId);
   }
 
   public async checkDuplicateTitle(sellerId: string, title: string, excludeListingId?: string) {
@@ -386,6 +534,9 @@ export class ListingService {
       isFeatured,
       featuredUntil: until,
     });
+    if (updated !== null) {
+      await invalidateLiveListingCountsCache();
+    }
     return updated !== null;
   }
 
@@ -408,3 +559,12 @@ export class ListingService {
 }
 
 export const listingService = new ListingService();
+
+/**
+ * Per-request React.cache() deduplicated + cross-request unstable_cache listing lookup
+ * for detail pages and generateMetadata(). Invalidated immediately on any ad change.
+ */
+export const getCachedPublicListingById = cache(async (id: string): Promise<Listing | null> => {
+  return listingService.getListingById(id);
+});
+
